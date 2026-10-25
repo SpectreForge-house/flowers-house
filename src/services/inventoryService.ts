@@ -1,0 +1,266 @@
+import { v4 as uuidv4 } from 'uuid';
+import { InventoryItem, InventoryTransaction, Bouquet, Order } from '../types';
+import { getInventory, saveInventory, getTransactions, addTransaction, getReservations } from './storage';
+import { InventoryStorageAdapter } from './inventoryStorageAdapter';
+import { deductInventoryForOrderRpc } from './supabaseInventoryStorage';
+
+export type InventoryMessage = { key: string; params?: Record<string, string | number> };
+
+function msg(key: string, params?: Record<string, string | number>): InventoryMessage {
+  return { key, params };
+}
+
+export function getInventoryCost(bouquetItems: { inventoryItemId: string; quantity: number }[], inventoryOverride?: InventoryItem[]): number {
+  const inventory = inventoryOverride ?? getInventory();
+  return bouquetItems.reduce((total, item) => {
+    const invItem = inventory.find(i => i.id === item.inventoryItemId);
+    return total + (invItem ? invItem.purchasePrice * item.quantity : 0);
+  }, 0);
+}
+
+export function calculateBouquetCost(bouquet: Bouquet, inventoryOverride?: InventoryItem[]): number {
+  return getInventoryCost(bouquet.items, inventoryOverride);
+}
+
+export function calculateBouquetProfit(bouquet: Bouquet, inventoryOverride?: InventoryItem[]): number {
+  const cost = calculateBouquetCost(bouquet, inventoryOverride);
+  return bouquet.sellingPrice - cost;
+}
+
+export function calculateBouquetMargin(bouquet: Bouquet, inventoryOverride?: InventoryItem[]): number {
+  const cost = calculateBouquetCost(bouquet, inventoryOverride);
+  if (cost === 0) return 0;
+  return ((bouquet.sellingPrice - cost) / bouquet.sellingPrice) * 100;
+}
+
+export async function deductInventoryForOrder(order: Order, bouquets: Bouquet[], adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
+  if (order.inventoryDeducted) {
+    return { success: false, message: msg('orders.inventoryAlreadyDeducted') };
+  }
+
+  if (adapter) {
+    // Cloud mode: use Supabase RPC for atomic deduction
+    try {
+      const rpcItems: { inventory_item_id: string; quantity: number }[] = [];
+
+      for (const orderItem of order.items) {
+        const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
+        if (!bouquet) {
+          return { success: false, message: msg('orders.bouquetNotFound', { id: orderItem.bouquetId }) };
+        }
+
+        for (let i = 0; i < orderItem.quantity; i++) {
+          for (const bouquetItem of bouquet.items) {
+            rpcItems.push({
+              inventory_item_id: bouquetItem.inventoryItemId,
+              quantity: bouquetItem.quantity,
+            });
+          }
+        }
+      }
+
+      await deductInventoryForOrderRpc(order.id, rpcItems);
+      return { success: true, message: msg('inventory.deductedSuccessfully') };
+    } catch (error) {
+      const err = error as Error;
+      return { success: false, message: msg('orders.insufficientStock', { item: err.message, need: 0, have: 0 }) };
+    }
+  }
+
+  // Local mode: use localStorage
+  const inventory = getInventory();
+  const transactions: InventoryTransaction[] = [];
+
+  for (const orderItem of order.items) {
+    const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
+    if (!bouquet) {
+      return { success: false, message: msg('orders.bouquetNotFound', { id: orderItem.bouquetId }) };
+    }
+
+    for (let i = 0; i < orderItem.quantity; i++) {
+      for (const bouquetItem of bouquet.items) {
+        const invItem = inventory.find(inv => inv.id === bouquetItem.inventoryItemId);
+        if (!invItem) {
+          return { success: false, message: msg('orders.inventoryItemNotFound', { id: bouquetItem.inventoryItemId }) };
+        }
+
+        const requiredQty = bouquetItem.quantity;
+        const reserved = getReservations().filter(r => r.inventoryItemId === invItem.id && r.status === 'active').reduce((sum, r) => sum + r.quantity, 0);
+        const available = invItem.quantity - reserved;
+        if (available < requiredQty) {
+          return { success: false, message: msg('orders.insufficientStock', { item: invItem.name, need: requiredQty, have: available }) };
+        }
+
+        invItem.quantity -= requiredQty;
+        invItem.updatedAt = new Date().toISOString();
+
+        transactions.push({
+          id: uuidv4(),
+          inventoryItemId: invItem.id,
+          type: 'remove',
+          quantity: requiredQty,
+          reason: `Used for Order ${order.id}`,
+          referenceId: order.id,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  saveInventory(inventory);
+  transactions.forEach(t => addTransaction(t));
+
+  return { success: true, message: msg('inventory.deductedSuccessfully') };
+}
+
+export async function addStock(itemId: string, quantity: number, reason: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
+  const inventory = adapter ? await adapter.getInventory() : getInventory();
+  const item = inventory.find(i => i.id === itemId);
+  
+  if (!item) {
+    return { success: false, message: msg('inventory.itemNotFound') };
+  }
+
+  item.quantity += quantity;
+  item.updatedAt = new Date().toISOString();
+
+  if (adapter) {
+    await adapter.updateInventoryItem(item);
+    await adapter.addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'add',
+      quantity,
+      reason,
+      createdAt: new Date().toISOString(),
+    });
+  } else {
+    saveInventory(inventory);
+    addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'add',
+      quantity,
+      reason,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, message: msg('inventory.addedStock', { qty: quantity, unit: item.unit, name: item.name }) };
+}
+
+export async function removeStock(itemId: string, quantity: number, reason: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
+  const inventory = adapter ? await adapter.getInventory() : getInventory();
+  const item = inventory.find(i => i.id === itemId);
+  
+  if (!item) {
+    return { success: false, message: msg('inventory.itemNotFound') };
+  }
+
+  if (item.quantity < quantity) {
+    return { success: false, message: msg('inventory.insufficientStock', { have: item.quantity, need: quantity }) };
+  }
+
+  item.quantity -= quantity;
+  item.updatedAt = new Date().toISOString();
+
+  if (adapter) {
+    await adapter.updateInventoryItem(item);
+    await adapter.addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'remove',
+      quantity,
+      reason,
+      createdAt: new Date().toISOString(),
+    });
+  } else {
+    saveInventory(inventory);
+    addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'remove',
+      quantity,
+      reason,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, message: msg('inventory.removedStock', { qty: quantity, unit: item.unit, name: item.name }) };
+}
+
+export async function getItemTransactions(itemId: string, adapter?: InventoryStorageAdapter): Promise<InventoryTransaction[]> {
+  if (adapter) {
+    const transactions = await adapter.getItemTransactions(itemId);
+    return transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  return getTransactions()
+    .filter(t => t.inventoryItemId === itemId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export function getLowStockItems(inventoryOverride?: InventoryItem[]): InventoryItem[] {
+  const inventory = inventoryOverride ?? getInventory();
+  return inventory.filter(item => item.quantity <= item.minStock);
+}
+
+export function getInventoryValue(inventoryOverride?: InventoryItem[]): number {
+  const inventory = inventoryOverride ?? getInventory();
+  return inventory.reduce((total, item) => total + (item.purchasePrice * item.quantity), 0);
+}
+
+export async function recordWaste(itemId: string, quantity: number, reason: string, comment?: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
+  const inventory = adapter ? await adapter.getInventory() : getInventory();
+  const item = inventory.find(i => i.id === itemId);
+
+  if (!item) {
+    return { success: false, message: msg('inventory.itemNotFound') };
+  }
+
+  if (quantity <= 0) {
+    return { success: false, message: msg('inventory.quantityRequired') };
+  }
+
+  if (item.quantity < quantity) {
+    return { success: false, message: msg('inventory.insufficientStock', { have: item.quantity, need: quantity }) };
+  }
+
+  item.quantity -= quantity;
+  item.updatedAt = new Date().toISOString();
+
+  if (adapter) {
+    await adapter.updateInventoryItem(item);
+    await adapter.addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'waste',
+      quantity,
+      reason,
+      comment,
+      createdAt: new Date().toISOString(),
+    });
+  } else {
+    saveInventory(inventory);
+    addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'waste',
+      quantity,
+      reason,
+      comment,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, message: msg('waste.recorded', { qty: quantity, unit: item.unit, name: item.name }) };
+}
+
+export async function getWasteTransactions(adapter?: InventoryStorageAdapter): Promise<InventoryTransaction[]> {
+  if (adapter) {
+    const transactions = await adapter.getWasteTransactions();
+    return transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  return getTransactions()
+    .filter(t => t.type === 'waste')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}

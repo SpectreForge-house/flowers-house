@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      (function() {
+        try {
+          var themeId = localStorage.getItem('flower-shop-theme') || 'midnight';
+          var themeMap = {
+            midnight: { background: '#0a0a0a', sidebar: '#141414', card: '#1a1a1a' },
+            botanical: { background: '#0a0a0a', sidebar: '#141414', card: '#1a1a1a' },
+            blossom: { background: '#0f0b0d', sidebar: '#1a1018', card: '#1e141c' },
+            light: { background: '#f8f6f4', sidebar: '#ffffff', card: '#ffffff' },
+            luxury: { background: '#0a0a0a', sidebar: '#141414', card: '#1a1a1a' },
+            ocean: { background: '#080c10', sidebar: '#0e1620', card: '#142028' },
+            lavender: { background: '#0c0a0f', sidebar: '#16121a', card: '#1c1620' },
+            autumn: { background: '#0c0a08', sidebar: '#181410', card: '#1e1814' }
+          };
+          var theme = themeMap[themeId] || themeMap.midnight;
+          var root = document.documentElement;
+          root.style.setProperty('--background', theme.background);
+          root.style.setProperty('--sidebar', theme.sidebar);
+          root.style.setProperty('--card', theme.card);
+        } catch(e) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#2d5a3d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Flower's House" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
+    <meta name="description" content="Flower's House - Flower Shop CRM for inventory, orders, deliveries and customer management" />
+    <title>Flower's House CRM</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

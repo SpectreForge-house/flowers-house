@@ -1,0 +1,19 @@
+{
+  "name": "Flower's House CRM",
+  "short_name": "Flower's House",
+  "description": "Flower shop inventory, orders, deliveries and customer management",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#2d5a3d",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --sidebar: #141414;
+  --card: #1a1a1a;
+  --surface: #242424;
+  --hover: #2a2a2a;
+  --elevated: #3a3a3a;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --border-color: #2a2a2a;
+  --border-focus: #3d7a52;
+  --border-error: #ef4444;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
+  --text-inverse: #0a0a0a;
+  --accent: #2d5a3d;
+  --accent-light: #3d7a52;
+  --accent-2: #722f37;
+  --accent-2-light: #8b3a42;
+  --accent-text: #ffffff;
+  --status-success: #10b981;
+  --status-warning: #f59e0b;
+  --status-danger: #ef4444;
+  --status-info: #3b82f6;
+  --status-neutral: #6b7280;
+  --chart-1: #2d5a3d;
+  --chart-2: #3d7a52;
+  --chart-3: #722f37;
+  --chart-4: #8b3a42;
+  --chart-5: #2a5a7a;
+  --chart-axis: #666666;
+  --chart-grid: #2a2a2a;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --ring-color: #3d7a52;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) var(--sidebar);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+input, select, textarea {
+  background-color: var(--card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+@keyframes fadeOutSlideUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 500px;
+  }
+  50% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+    max-height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+}
+
+@keyframes fadeOutSlideRight {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 500px;
+  }
+  40% {
+    opacity: 0.6;
+    transform: translateX(30px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(80px);
+    max-height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+}
+
+.animate-delete {
+  animation: fadeOutSlideRight 0.35s ease-in forwards;
+}
+
+.animate-delete-row {
+  animation: fadeOutSlideRight 0.35s ease-in forwards;
+}
+
+@media (max-width: 640px) {
+  .table-responsive {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .table-responsive table {
+    min-width: 600px;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-content {
+    max-height: 90vh !important;
+    margin: 0.5rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .calendar-grid {
+    font-size: 0.75rem;
+  }
+  .calendar-grid button {
+    padding: 0.25rem;
+    min-height: 36px;
+  }
+}
+
+/* While a dialog is open the sidebar stays visible for the language flags, but its
+   navigation must not dismiss the dialog (previously the full-screen backdrop blocked it). */
+body:has(.modal-overlay) [data-sidebar-nav] {
+  pointer-events: none;
+}
