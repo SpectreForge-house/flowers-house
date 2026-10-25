@@ -10,12 +10,12 @@ export function clearShopIdCache(): void {
 export class SupabaseCustomerAdapter implements CustomerStorageAdapter {
   async getCustomers(): Promise<Customer[]> {
     if (!supabase) {
-      return [];
+      throw new Error('Supabase client not initialized');
     }
 
     const shopId = await getShopId();
     if (!shopId) {
-      return [];
+      throw new Error('Cannot load customers: no shop_id. Ensure you are signed in and your profile exists.');
     }
 
     const { data, error } = await supabase
@@ -26,7 +26,7 @@ export class SupabaseCustomerAdapter implements CustomerStorageAdapter {
 
     if (error) {
       console.error('[Supabase] SELECT customers failed:', error.message, error.code);
-      return [];
+      throw new Error(`Supabase SELECT customers failed: ${error.message} (code: ${error.code})`);
     }
 
     return (data || []).map(row => ({

@@ -5,13 +5,15 @@ import { LocalHistoryAdapter } from '../services/localHistoryStorage';
 import { SupabaseHistoryAdapter } from '../services/supabaseHistoryStorage';
 import { getFilteredHistory, deleteHistoryRecord, clearHistory, ClearHistoryPeriod } from '../services/historyService';
 import { getStorageMode } from '../services/storageAdapter';
-import { isSupabaseAvailable, getAuthState, profileReady, onAuthChange } from '../services/authService';
+import { isSupabaseAvailable, profileReady, onAuthChange } from '../services/authService';
+import { isCloudActive } from '../services/storageMode';
+import { guardCloudWrites } from '../services/cloudWriteGuard';
+import { readActiveCloudCache, writeCloudCache } from '../services/cloudCache';
+import * as storage from '../services/storage';
 
 function getHistoryAdapter(): HistoryStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseHistoryAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseHistoryAdapter());
   }
   return new LocalHistoryAdapter();
 }
@@ -30,15 +32,15 @@ export function useHistory() {
       }
       const adapter = getHistoryAdapter();
       const data = await getFilteredHistory({}, adapter);
-      setRecords(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('history', list);
+      setRecords(list);
       setError(null);
     } catch (err) {
       console.error('[useHistory] Failed to load history:', err);
       const message = err instanceof Error ? err.message : 'Failed to load history';
       setError(message);
-      if (getStorageMode() !== 'supabase') {
-        setRecords([]);
-      }
+      setRecords(readActiveCloudCache('history') ?? storage.getHistory());
     } finally {
       setLoading(false);
     }

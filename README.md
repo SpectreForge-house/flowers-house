@@ -23,7 +23,7 @@ default; Supabase is an optional cloud backend.
 - **Localization** — English, Russian and Bulgarian.
 - **Themes** — sixteen built-in themes plus a custom theme editor.
 - **Team roles** — owner, manager and staff permissions with one-time invite codes.
-- **Offline-first** — local storage by default; Supabase is opt-in.
+- **Offline-capable** — local storage by default; Supabase is opt-in, caches cloud reads per user and blocks cloud writes while offline.
 
 ## Tech stack
 
@@ -251,9 +251,11 @@ staff from **Settings → Team** with a one-time email-bound code; acceptance is
 limited to an empty auto-created shop so existing data is never merged silently.
 Cloud mode covers customers,
 inventory (items, transactions, reservations), bouquets, orders, deliveries,
-history, settings, manual purchases, photo files and reminder state. Realtime
-refresh is implemented; offline writes are still local-only and do not queue
-for later sync.
+history, settings, manual purchases, photo files and reminder state. In cloud
+mode the cloud is authoritative: successful reads are cached per user, offline
+reads fall back to that cache, and cloud writes are blocked until reconnect
+(they do not queue for later sync). The local workspace keys are never
+overwritten by cloud data, so switching back to local mode preserves them.
 
 ### Team roles
 

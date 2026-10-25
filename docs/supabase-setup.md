@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document explains how to set up the Supabase backend for the Flower's House CRM. Supabase is now a first-class storage mode (Settings -> Cloud), while localStorage remains available for offline/local use. The cloud mode includes data migration, photos in Supabase Storage, realtime refresh, cloud backups and an offline read-only banner.
+This document explains how to set up the Supabase backend for the Flower's House CRM. Supabase is now a first-class storage mode (Settings -> Cloud), while localStorage remains available for offline/local use. The cloud mode includes data migration, photos in Supabase Storage, realtime refresh, cloud backups and an offline read-only banner. When cloud mode is active it is authoritative: successful reads are cached per user in a separate local namespace, offline reads fall back to that cache, and cloud writes are blocked until the connection returns.
 
 ## 1. Create Supabase Project
 
@@ -173,7 +173,7 @@ The `.env.example` file shows the required variables without real values.
 
 ## 8. Current Limitations
 
-- Cloud writes do not queue while offline; offline cloud mode is read-only.
+- Cloud writes do not queue while offline; offline cloud mode is read-only and reads come from the per-user cache of the last successful sync.
 - Mobile/PWA layout work is deferred.
 - Automatic backups are desktop-only.
 

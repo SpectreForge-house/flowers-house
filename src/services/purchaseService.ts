@@ -3,6 +3,8 @@ import { Bouquet, ClientPurchase, Order } from '../types';
 import * as storage from './storage';
 import { listPhotos, photoOwnerKey, removeOwnerPhotos } from './photoStorage';
 import { getPurchaseAdapter } from '../hooks/useStore';
+import { isCloudActive } from './storageMode';
+import { readCloudCache, writeCloudCache } from './cloudCache';
 
 // ---------------------------------------------------------------------------
 // Client purchase history
@@ -37,7 +39,10 @@ export async function createPurchase(customerId: string, data: PurchaseFormValue
     updatedAt: now,
   };
   await getPurchaseAdapter().addPurchase(purchase);
-  storage.addPurchase(purchase);
+  if (isCloudActive()) {
+    const cached = readCloudCache('purchases') ?? storage.getPurchases();
+    writeCloudCache('purchases', [...cached, purchase]);
+  }
   return purchase;
 }
 
@@ -52,17 +57,27 @@ export async function updatePurchase(existing: ClientPurchase, data: PurchaseFor
     updatedAt: new Date().toISOString(),
   };
   await getPurchaseAdapter().updatePurchase(updated);
-  storage.updatePurchase(updated);
+  if (isCloudActive()) {
+    const cached = readCloudCache('purchases') ?? storage.getPurchases();
+    writeCloudCache('purchases', cached.map(p => (p.id === updated.id ? updated : p)));
+  }
   return updated;
 }
 
 export async function deletePurchase(id: string): Promise<void> {
   await getPurchaseAdapter().deletePurchase(id);
-  storage.deletePurchase(id);
+  if (isCloudActive()) {
+    const cached = readCloudCache('purchases') ?? storage.getPurchases();
+    writeCloudCache('purchases', cached.filter(p => p.id !== id));
+  }
 }
 
 export function getCustomerPurchases(customerId: string): ClientPurchase[] {
-  return storage.getPurchases()
+  const purchases = isCloudActive()
+    ? readCloudCache('purchases') ?? storage.getPurchases()
+    : storage.getPurchases();
+
+  return purchases
     .filter(p => p.customerId === customerId)
     .sort((a, b) => {
       // 'YYYY-MM-DD' compares correctly as a string; fall back to creation time.
@@ -93,7 +108,10 @@ export async function removeCustomerPurchases(customerId: string): Promise<void>
     console.error('[purchaseService] Failed to delete purchases in cloud:', err);
     throw err;
   }
-  storage.deletePurchasesByCustomer(customerId);
+  if (isCloudActive()) {
+    const cached = readCloudCache('purchases') ?? storage.getPurchases();
+    writeCloudCache('purchases', cached.filter(p => p.customerId !== customerId));
+  }
   await Promise.all(ownerKeys.map(ownerKey => removeOwnerPhotos(ownerKey)));
 }
 

@@ -4,10 +4,20 @@ import { getStorageMode } from '../services/storageAdapter';
 import { isSupabaseAvailable, onAuthChange, profileReady } from '../services/authService';
 import { getReminderDismissKey, Reminder } from '../services/reminderService';
 import { getReminderStorageAdapter } from './useStore';
+import { isCloudActive } from '../services/storageMode';
+import { readActiveCloudCache, writeCloudCache } from '../services/cloudCache';
+
+function initialReadIds(): string[] {
+  return readActiveCloudCache('readReminders') ?? storage.getReadReminders();
+}
+
+function initialDismissedKeys(): string[] {
+  return readActiveCloudCache('dismissedReminders') ?? storage.getDismissedReminders();
+}
 
 export function useReminderState() {
-  const [readIds, setReadIds] = useState<string[]>(storage.getReadReminders());
-  const [dismissedKeys, setDismissedKeys] = useState<string[]>(storage.getDismissedReminders());
+  const [readIds, setReadIds] = useState<string[]>(initialReadIds);
+  const [dismissedKeys, setDismissedKeys] = useState<string[]>(initialDismissedKeys);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -20,14 +30,16 @@ export function useReminderState() {
         adapter.getReadReminders(),
         adapter.getDismissedReminders(),
       ]);
-      storage.saveReadReminders(read);
-      storage.saveDismissedReminders(dismissed);
+      if (isCloudActive()) {
+        writeCloudCache('readReminders', read);
+        writeCloudCache('dismissedReminders', dismissed);
+      }
       setReadIds(read);
       setDismissedKeys(dismissed);
     } catch (err) {
       console.error('[useReminderState] Failed to load reminder state:', err);
-      setReadIds(storage.getReadReminders());
-      setDismissedKeys(storage.getDismissedReminders());
+      setReadIds(readActiveCloudCache('readReminders') ?? storage.getReadReminders());
+      setDismissedKeys(readActiveCloudCache('dismissedReminders') ?? storage.getDismissedReminders());
     } finally {
       setLoading(false);
     }
@@ -44,45 +56,39 @@ export function useReminderState() {
   }, [load]);
 
   const persistRead = useCallback((next: string[]) => {
-    storage.saveReadReminders(next);
     setReadIds(next);
-    void getReminderStorageAdapter().saveReadReminders(next).catch(err => {
-      console.error('[useReminderState] Failed to save read reminders:', err);
-    });
+    void getReminderStorageAdapter().saveReadReminders(next)
+      .then(() => {
+        if (isCloudActive()) writeCloudCache('readReminders', next);
+        else storage.saveReadReminders(next);
+      })
+      .catch(err => {
+        console.error('[useReminderState] Failed to save read reminders:', err);
+      });
   }, []);
 
   const persistDismissed = useCallback((next: string[]) => {
-    storage.saveDismissedReminders(next);
     setDismissedKeys(next);
-    void getReminderStorageAdapter().saveDismissedReminders(next).catch(err => {
-      console.error('[useReminderState] Failed to save dismissed reminders:', err);
-    });
+    void getReminderStorageAdapter().saveDismissedReminders(next)
+      .then(() => {
+        if (isCloudActive()) writeCloudCache('dismissedReminders', next);
+        else storage.saveDismissedReminders(next);
+      })
+      .catch(err => {
+        console.error('[useReminderState] Failed to save dismissed reminders:', err);
+      });
   }, []);
 
   const markRead = useCallback((reminderId: string) => {
-    setReadIds(current => {
-      if (current.includes(reminderId)) return current;
-      const next = [...current, reminderId];
-      storage.saveReadReminders(next);
-      void getReminderStorageAdapter().saveReadReminders(next).catch(err => {
-        console.error('[useReminderState] Failed to save read reminder:', err);
-      });
-      return next;
-    });
-  }, []);
+    if (readIds.includes(reminderId)) return;
+    persistRead([...readIds, reminderId]);
+  }, [readIds, persistRead]);
 
   const dismiss = useCallback((reminder: Reminder) => {
     const key = getReminderDismissKey(reminder);
-    setDismissedKeys(current => {
-      if (current.includes(key)) return current;
-      const next = [...current, key];
-      storage.saveDismissedReminders(next);
-      void getReminderStorageAdapter().saveDismissedReminders(next).catch(err => {
-        console.error('[useReminderState] Failed to save dismissed reminder:', err);
-      });
-      return next;
-    });
-  }, []);
+    if (dismissedKeys.includes(key)) return;
+    persistDismissed([...dismissedKeys, key]);
+  }, [dismissedKeys, persistDismissed]);
 
   const markAllRead = useCallback((ids: string[]) => {
     persistRead(Array.from(new Set(ids)));

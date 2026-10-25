@@ -12,7 +12,7 @@ import { SupabaseOrderAdapter } from '../services/supabaseOrderStorage';
 import { HistoryStorageAdapter } from '../services/historyStorageAdapter';
 import { LocalHistoryAdapter } from '../services/localHistoryStorage';
 import { SupabaseHistoryAdapter } from '../services/supabaseHistoryStorage';
-import { isSupabaseAvailable, getAuthState, profileReady, onAuthChange } from '../services/authService';
+import { isSupabaseAvailable, profileReady, onAuthChange } from '../services/authService';
 import { PurchaseStorageAdapter } from '../services/purchaseStorageAdapter';
 import { SupabasePurchaseAdapter } from '../services/supabasePurchaseStorage';
 import { SettingsStorageAdapter } from '../services/settingsStorageAdapter';
@@ -20,12 +20,13 @@ import { SupabaseSettingsAdapter } from '../services/supabaseSettingsStorage';
 import { ReminderStorageAdapter } from '../services/reminderStorageAdapter';
 import { SupabaseReminderAdapter } from '../services/supabaseReminderStorage';
 import { onRealtimeChange } from '../services/realtimeService';
+import { isCloudActive } from '../services/storageMode';
+import { guardCloudWrites } from '../services/cloudWriteGuard';
+import { readActiveCloudCache, writeCloudCache } from '../services/cloudCache';
 
 export function getCustomerAdapter(): CustomerStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseCustomerAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseCustomerAdapter());
   }
   return {
     getCustomers: () => storage.getCustomers(),
@@ -37,10 +38,8 @@ export function getCustomerAdapter(): CustomerStorageAdapter {
 }
 
 export function getInventoryAdapter(): InventoryStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseInventoryAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseInventoryAdapter());
   }
   return {
     getInventory: () => storage.getInventory(),
@@ -67,10 +66,8 @@ export function getInventoryAdapter(): InventoryStorageAdapter {
 }
 
 export function getBouquetAdapter(): BouquetStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseBouquetAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseBouquetAdapter());
   }
   return {
     getBouquets: () => storage.getBouquets(),
@@ -82,10 +79,8 @@ export function getBouquetAdapter(): BouquetStorageAdapter {
 }
 
 export function getOrderAdapter(): OrderStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseOrderAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseOrderAdapter());
   }
   return {
     getOrders: () => storage.getOrders(),
@@ -108,19 +103,15 @@ export function getOrderAdapter(): OrderStorageAdapter {
 }
 
 export function getHistoryAdapter(): HistoryStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseHistoryAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseHistoryAdapter());
   }
   return new LocalHistoryAdapter();
 }
 
 export function getPurchaseAdapter(): PurchaseStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabasePurchaseAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabasePurchaseAdapter());
   }
   return {
     getPurchases: async () => storage.getPurchases(),
@@ -132,10 +123,8 @@ export function getPurchaseAdapter(): PurchaseStorageAdapter {
 }
 
 export function getSettingsAdapter(): SettingsStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseSettingsAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseSettingsAdapter());
   }
   return {
     getSettings: async () => storage.getSettings(),
@@ -144,10 +133,8 @@ export function getSettingsAdapter(): SettingsStorageAdapter {
 }
 
 export function getReminderStorageAdapter(): ReminderStorageAdapter {
-  const mode = getStorageMode();
-  const supabaseReady = isSupabaseAvailable() && getAuthState().user !== null;
-  if (mode === 'supabase' && supabaseReady) {
-    return new SupabaseReminderAdapter();
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseReminderAdapter());
   }
   return {
     getReadReminders: async () => storage.getReadReminders(),
@@ -170,14 +157,12 @@ export function useCustomers() {
       }
       const adapter = getCustomerAdapter();
       const data = await adapter.getCustomers();
-      setCustomers(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('customers', list);
+      setCustomers(list);
     } catch (err) {
       console.error('[useCustomers] Failed to load customers:', err);
-      if (getStorageMode() === 'supabase') {
-        setCustomers([]);
-      } else {
-        setCustomers(storage.getCustomers());
-      }
+      setCustomers(readActiveCloudCache('customers') ?? storage.getCustomers());
     } finally {
       setLoading(false);
     }
@@ -246,18 +231,17 @@ export function useInventory() {
       }
       const adapter = getInventoryAdapter();
       const data = await adapter.getInventory();
-      setInventory(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('inventory', list);
       const resData = await adapter.getReservations();
-      setReservations(Array.isArray(resData) ? resData : []);
+      const resList = Array.isArray(resData) ? resData : [];
+      if (isCloudActive()) writeCloudCache('reservations', resList);
+      setInventory(list);
+      setReservations(resList);
     } catch (err) {
       console.error('[useInventory] Failed to load inventory:', err);
-      if (getStorageMode() === 'supabase') {
-        setInventory([]);
-        setReservations([]);
-      } else {
-        setInventory(storage.getInventory());
-        setReservations(storage.getReservations());
-      }
+      setInventory(readActiveCloudCache('inventory') ?? storage.getInventory());
+      setReservations(readActiveCloudCache('reservations') ?? storage.getReservations());
     } finally {
       setLoading(false);
     }
@@ -376,14 +360,12 @@ export function useBouquets() {
       }
       const adapter = getBouquetAdapter();
       const data = await adapter.getBouquets();
-      setBouquets(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('bouquets', list);
+      setBouquets(list);
     } catch (err) {
       console.error('[useBouquets] Failed to load bouquets:', err);
-      if (getStorageMode() === 'supabase') {
-        setBouquets([]);
-      } else {
-        setBouquets(storage.getBouquets());
-      }
+      setBouquets(readActiveCloudCache('bouquets') ?? storage.getBouquets());
     } finally {
       setLoading(false);
     }
@@ -453,14 +435,12 @@ export function useOrders() {
       }
       const adapter = getOrderAdapter();
       const data = await adapter.getOrders();
-      setOrders(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('orders', list);
+      setOrders(list);
     } catch (err) {
       console.error('[useOrders] Failed to load orders:', err);
-      if (getStorageMode() === 'supabase') {
-        setOrders([]);
-      } else {
-        setOrders(storage.getOrders());
-      }
+      setOrders(readActiveCloudCache('orders') ?? storage.getOrders());
     } finally {
       setLoading(false);
     }
@@ -528,14 +508,12 @@ export function useDeliveries() {
       }
       const adapter = getOrderAdapter();
       const data = await adapter.getDeliveries();
-      setDeliveries(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('deliveries', list);
+      setDeliveries(list);
     } catch (err) {
       console.error('[useDeliveries] Failed to load deliveries:', err);
-      if (getStorageMode() === 'supabase') {
-        setDeliveries([]);
-      } else {
-        setDeliveries(storage.getDeliveries());
-      }
+      setDeliveries(readActiveCloudCache('deliveries') ?? storage.getDeliveries());
     } finally {
       setLoading(false);
     }
@@ -598,9 +576,11 @@ export function useTransactions() {
   return { transactions, refresh };
 }
 
-/** Manually added client purchases - local mode or Supabase (mirrored to the local cache). */
+/** Manually added client purchases - local mode or Supabase (mirrored to the cloud cache). */
 export function usePurchases() {
-  const [purchases, setPurchases] = useState<ClientPurchase[]>(storage.getPurchases());
+  const [purchases, setPurchases] = useState<ClientPurchase[]>(
+    () => readActiveCloudCache('purchases') ?? storage.getPurchases(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -612,15 +592,13 @@ export function usePurchases() {
       const adapter = getPurchaseAdapter();
       const data = await adapter.getPurchases();
       const list = Array.isArray(data) ? data : [];
-      // Keep the synchronous cache in sync: client status / history helpers
-      // read from it without knowing about the storage mode.
-      storage.savePurchases(list);
+      if (isCloudActive()) writeCloudCache('purchases', list);
       setPurchases(list);
       setError(null);
     } catch (err) {
       console.error('[usePurchases] Failed to load purchases:', err);
       setError(err instanceof Error ? err.message : String(err));
-      setPurchases(storage.getPurchases());
+      setPurchases(readActiveCloudCache('purchases') ?? storage.getPurchases());
     } finally {
       setLoading(false);
     }
@@ -648,7 +626,9 @@ export function usePurchases() {
 }
 
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(storage.getSettings());
+  const [settings, setSettings] = useState<Settings>(
+    () => readActiveCloudCache('settings') ?? storage.getSettings(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -658,14 +638,13 @@ export function useSettings() {
         await profileReady;
       }
       const data = await getSettingsAdapter().getSettings();
+      if (isCloudActive()) writeCloudCache('settings', data);
       setSettings(data);
-      // Cache for synchronous consumers (dashboard cards, order form, ...).
-      if (getStorageMode() === 'supabase') storage.updateSettings(data);
       setError(null);
     } catch (err) {
       console.error('[useSettings] Failed to load settings:', err);
       setError(err instanceof Error ? err.message : String(err));
-      setSettings(storage.getSettings());
+      setSettings(readActiveCloudCache('settings') ?? storage.getSettings());
     } finally {
       setLoading(false);
     }
@@ -682,11 +661,10 @@ export function useSettings() {
   }, [loadSettings]);
 
   const updateSettings = useCallback(async (newSettings: Settings) => {
-    // Local cache first so the UI updates immediately.
-    storage.updateSettings(newSettings);
     setSettings(newSettings);
     try {
       await getSettingsAdapter().updateSettings(newSettings);
+      if (isCloudActive()) writeCloudCache('settings', newSettings);
       setError(null);
     } catch (err) {
       console.error('[useSettings] Failed to save settings:', err);
