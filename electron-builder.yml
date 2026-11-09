@@ -1,5 +1,5 @@
-appId: com.flowershouse.crm
-productName: Flower's House CRM
+appId: com.flowershouse.app
+productName: Flower's House
 copyright: Copyright © 2026 Flower's House
 
 directories:
@@ -15,6 +15,7 @@ asar: true
 npmRebuild: false
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
@@ -27,4 +28,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Flower's House CRM
+  shortcutName: Flower's House
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico

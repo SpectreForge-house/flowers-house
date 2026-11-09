@@ -1,11 +1,14 @@
 {
   "name": "flower-shop",
   "private": true,
-  "version": "1.0.0",
-  "description": "Flower's House CRM - orders, inventory, deliveries and customers for a flower shop",
+  "version": "1.1.1",
+  "description": "Flower's House - orders, inventory, deliveries and customers for a flower shop",
   "author": "Flower's House",
   "type": "module",
   "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -18,9 +21,20 @@
     "start": "electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:release": "npm run android:sync && cd android && gradlew.bat assembleRelease",
+    "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
     "@supabase/supabase-js": "^2.109.0",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.454.0",
@@ -31,6 +45,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/uuid": "^10.0.0",

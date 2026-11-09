@@ -19,18 +19,28 @@ export function OrderDetails({ order, onClose, onStatusChange }: OrderDetailsPro
   const { t } = useLanguage();
   const { bouquets } = useBouquets();
   const nextStatus = getNextStatus(order.status);
+  const isInStore = order.orderType === 'in_store';
   // Optional bouquet photo attached when the order was created.
   const orderPhoto = listPhotos(photoOwnerKey('order', order.id))[0];
 
   return createPortal(
     <div className="fixed inset-0 modal-overlay lg:left-64 z-[55] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full sm:max-w-2xl bg-card sm:rounded-lg border border-border shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="w-full sm:max-w-2xl bg-card sm:rounded-lg border border-border shadow-2xl max-h-[88vh] sm:max-h-[90vh] overflow-hidden flex flex-col rounded-t-2xl pb-[env(safe-area-inset-bottom)] sm:pb-0">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">{t.orderDetails.order} {order.id}</h2>
-            <span className={`px-2 py-1 rounded text-xs ${getStatusColor(order.status)}`}>
-              {t.statuses[order.status as keyof typeof t.statuses]}
-            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`px-2 py-1 rounded text-xs ${getStatusColor(order.status)}`}>
+                {t.statuses[order.status as keyof typeof t.statuses]}
+              </span>
+              <span className={`px-2 py-1 rounded border text-xs ${
+                isInStore
+                  ? 'border-status-warning text-status-warning'
+                  : 'border-border text-text-muted'
+              }`}>
+                {isInStore ? t.orderDetails.inStore : t.orderDetails.delivery}
+              </span>
+            </div>
           </div>
           <button onClick={onClose} className="p-1 text-text-secondary hover:text-text-primary hover:bg-hover rounded">
             <X size={20} />
@@ -39,25 +49,34 @@ export function OrderDetails({ order, onClose, onStatusChange }: OrderDetailsPro
 
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-surface rounded-lg p-3">
+            <div className={`bg-surface rounded-lg p-3 ${isInStore ? 'sm:col-span-2' : ''}`}>
               <p className="text-text-secondary text-sm mb-1">{t.orderDetails.customer}</p>
               <p className="text-text-primary font-medium">{order.customerName}</p>
               <p className="text-text-secondary text-sm">{order.customerPhone}</p>
             </div>
-            <div className="bg-surface rounded-lg p-3">
-              <p className="text-text-secondary text-sm mb-1">{t.orderDetails.recipient}</p>
-              <p className="text-text-primary font-medium">{order.recipientName}</p>
-              {order.recipientPhone && (
-                <p className="text-text-secondary text-sm">{order.recipientPhone}</p>
-              )}
-            </div>
+            {!isInStore && (
+              <div className="bg-surface rounded-lg p-3">
+                <p className="text-text-secondary text-sm mb-1">{t.orderDetails.recipient}</p>
+                <p className="text-text-primary font-medium">{order.recipientName}</p>
+                {order.recipientPhone && (
+                  <p className="text-text-secondary text-sm">{order.recipientPhone}</p>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-text-secondary text-sm mb-1">{t.orderDetails.delivery}</p>
-            <p className="text-text-primary">{order.deliveryAddress}</p>
-            <p className="text-text-secondary text-sm">{formatDate(order.deliveryDate)} {t.orderDetails.at} {order.deliveryTime}</p>
-          </div>
+          {isInStore ? (
+            <div className="bg-surface rounded-lg p-3">
+              <p className="text-text-secondary text-sm mb-1">{t.orderDetails.inStore}</p>
+              <p className="text-text-primary">{formatDate(order.deliveryDate)} {order.deliveryTime}</p>
+            </div>
+          ) : (
+            <div className="bg-surface rounded-lg p-3">
+              <p className="text-text-secondary text-sm mb-1">{t.orderDetails.delivery}</p>
+              <p className="text-text-primary">{order.deliveryAddress}</p>
+              <p className="text-text-secondary text-sm">{formatDate(order.deliveryDate)} {t.orderDetails.at} {order.deliveryTime}</p>
+            </div>
+          )}
 
           <div>
             <p className="text-text-secondary text-sm mb-2">{t.orderDetails.items}</p>
@@ -86,10 +105,12 @@ export function OrderDetails({ order, onClose, onStatusChange }: OrderDetailsPro
                 {formatCurrency(order.total - order.deliveryFee)}
               </span>
             </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-text-secondary">{t.orderDetails.deliveryFee}</span>
-              <span className="text-text-primary">{formatCurrency(order.deliveryFee)}</span>
-            </div>
+            {!isInStore && (
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-text-secondary">{t.orderDetails.deliveryFee}</span>
+                <span className="text-text-primary">{formatCurrency(order.deliveryFee)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-medium pt-2 border-t border-elevated">
               <span className="text-text-primary">{t.orderDetails.total}</span>
               <span className="text-status-success text-lg">{formatCurrency(order.total)}</span>

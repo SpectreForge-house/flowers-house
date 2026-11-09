@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
+import { Capacitor } from '@capacitor/core'
 import { isOfflineCloudWriteError } from './services/cloudWriteGuard'
 
 // Offline cloud writes are expected to fail; the UI shows the read-only banner.
@@ -13,8 +14,9 @@ window.addEventListener('unhandledrejection', event => {
 })
 
 // Service workers are not available on file:// or the packaged app:// scheme.
+// Capacitor ships its own assets, so a service worker there only risks stale UI.
 const isDesktopShell = window.location.protocol === 'file:' || window.location.protocol === 'app:';
-if (!isDesktopShell) {
+if (!isDesktopShell && !Capacitor.isNativePlatform()) {
   registerSW({ immediate: true })
 }
 

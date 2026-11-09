@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
-import { initAuth, onAuthChange, signOut as authSignOut, getAuthState } from '../services/authService';
+import { initAuth, initAuthDeepLinks, onAuthChange, signOut as authSignOut, getAuthState } from '../services/authService';
 
 interface AuthContextType {
   user: User | null;
@@ -16,6 +16,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    void initAuthDeepLinks();
     initAuth();
 
     const unsubscribe = onAuthChange((state) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit, ImageOff, Repeat, Trash2 } from 'lucide-react';
+import { Edit, ImageOff, MapPin, Repeat, Trash2 } from 'lucide-react';
 import { PurchaseHistoryEntry, deletePurchase } from '../../services/purchaseService';
 import { deleteOrderAndCleanup } from '../../services/orderService';
 import { recordHistory } from '../../services/historyService';
@@ -121,6 +121,12 @@ export function PurchaseDetail({ entry, onClose, onEdit, onRepeat, onChanged }: 
             <div className="bg-surface border border-border rounded-lg p-3">
               <p className="text-xs text-text-secondary mb-1">{t.purchases.date}</p>
               <p className="text-text-primary">{formatDate(entry.date)}</p>
+              {entry.deliveryAddress && (
+                <p className="flex items-start gap-1 text-xs text-text-secondary mt-2">
+                  <MapPin size={12} className="shrink-0 mt-0.5" />
+                  <span className="whitespace-pre-line">{entry.deliveryAddress}</span>
+                </p>
+              )}
             </div>
             {isOrder && entry.order && (
               <div className="bg-surface border border-border rounded-lg p-3">

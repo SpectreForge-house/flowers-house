@@ -1,10 +1,11 @@
-import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, InventoryReservation, HistoryRecord, ClientPurchase } from '../types';
+import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, InventoryReservation, HistoryRecord, ClientPurchase, FinanceEntry } from '../types';
 import { SupabaseCustomerAdapter } from './supabaseStorage';
 import { SupabaseInventoryAdapter } from './supabaseInventoryStorage';
 import { SupabaseBouquetAdapter } from './supabaseBouquetStorage';
 import { SupabaseOrderAdapter } from './supabaseOrderStorage';
 import { SupabaseHistoryAdapter } from './supabaseHistoryStorage';
 import { SupabasePurchaseAdapter } from './supabasePurchaseStorage';
+import { SupabaseFinanceAdapter } from './supabaseFinanceStorage';
 import { SupabaseSettingsAdapter } from './supabaseSettingsStorage';
 
 export interface CloudBackupRecords {
@@ -17,6 +18,7 @@ export interface CloudBackupRecords {
   reservations: InventoryReservation[];
   history: HistoryRecord[];
   purchases: ClientPurchase[];
+  finance: FinanceEntry[];
   settings: Awaited<ReturnType<SupabaseSettingsAdapter['getSettings']>>;
 }
 
@@ -26,9 +28,10 @@ export async function loadCloudBackupRecords(): Promise<CloudBackupRecords> {
   const bouquetAdapter = new SupabaseBouquetAdapter();
   const orderAdapter = new SupabaseOrderAdapter();
   const purchaseAdapter = new SupabasePurchaseAdapter();
+  const financeAdapter = new SupabaseFinanceAdapter();
   const settingsAdapter = new SupabaseSettingsAdapter();
 
-  const [customers, inventory, bouquets, orders, deliveries, reservations, history, purchases, settings] =
+  const [customers, inventory, bouquets, orders, deliveries, reservations, history, purchases, finance, settings] =
     await Promise.all([
       customerAdapter.getCustomers(),
       inventoryAdapter.getInventory(),
@@ -38,6 +41,7 @@ export async function loadCloudBackupRecords(): Promise<CloudBackupRecords> {
       inventoryAdapter.getReservations(),
       new SupabaseHistoryAdapter().getHistory(),
       purchaseAdapter.getPurchases(),
+      financeAdapter.getEntries(),
       settingsAdapter.getSettings(),
     ]);
 
@@ -55,6 +59,7 @@ export async function loadCloudBackupRecords(): Promise<CloudBackupRecords> {
     reservations: reservations as InventoryReservation[],
     history: history as HistoryRecord[],
     purchases: purchases as ClientPurchase[],
+    finance: finance as FinanceEntry[],
     settings,
   };
 }

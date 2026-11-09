@@ -9,7 +9,8 @@ export type RealtimeTable =
   | 'inventory_items'
   | 'inventory_reservations'
   | 'customers'
-  | 'client_purchases';
+  | 'client_purchases'
+  | 'finance_entries';
 
 const TABLES: RealtimeTable[] = [
   'orders',
@@ -18,6 +19,7 @@ const TABLES: RealtimeTable[] = [
   'inventory_reservations',
   'customers',
   'client_purchases',
+  'finance_entries',
 ];
 
 type Listener = (table: RealtimeTable) => void;

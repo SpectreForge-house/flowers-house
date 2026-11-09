@@ -1,22 +1,33 @@
-# Flower's House CRM
+# Flower's House
 
-A desktop-first CRM for a flower shop: orders, deliveries, inventory, bouquets,
-customers, statistics, history and backups. It runs as a Windows desktop app
-(Electron), in the browser, or as an installable PWA. Data is stored locally by
+A CRM for a flower shop: orders, deliveries, inventory, bouquets, customers,
+statistics, history and backups. It runs as a Windows desktop app (Electron), in
+the browser/PWA, and as an Android app (Capacitor). Data is stored locally by
 default; Supabase is an optional cloud backend.
 
 ## Features
 
-- **Orders** — status workflow from `new` through `completed` or `cancelled`,
-  automatic inventory deduction, reservations and delivery records.
+- **Orders** — delivery orders and in-store sales, status workflow from `new`
+  through `completed` or `cancelled`, automatic inventory deduction,
+  reservations and delivery records.
 - **Customers** — contact details, photos, important dates, purchase history and
   automatic New / Regular / VIP status.
 - **Inventory** — stock levels, low-stock alerts, receipts, write-offs, waste
-  tracking and an inventory value calculator.
+  tracking and an inventory value calculator. Photos can be imported from the
+  PC, phone camera, clipboard or drag-and-drop and turned into stock rows for
+  review before anything is saved.
 - **Bouquets** — composition, cost, profit, margin and photos.
 - **Deliveries and calendar** — daily delivery schedule and upcoming customer
   dates.
 - **Statistics** — revenue, profit, top bouquets and sales charts.
+- **Finance (owner only)** — a month calendar cash-book: every day shows its
+  revenue and expenses, clicking a day opens that day's entries with editing
+  and deletion, and month summaries show gross revenue, expenses, net profit
+  and average daily revenue. Entries can be added for any date, and local
+  entries missing from the cloud are offered for one-click upload.
+- **Mobile reminders** — local Android notifications for upcoming customer
+  dates and an evening nudge to enter the day's revenue, both configurable in
+  **Settings** with a test-notification button.
 - **History** — audit trail for orders, stock, customers and settings.
 - **Backups** — JSON export/import plus automatic folder backups (desktop) that
   include photos.
@@ -28,14 +39,16 @@ default; Supabase is an optional cloud backend.
 ## Tech stack
 
 React 18, TypeScript, Vite 5, Tailwind CSS, React Router, Recharts, `date-fns`,
-`lucide-react`, Supabase JS, Electron 33, `vite-plugin-pwa` and
-`electron-builder`.
+`lucide-react`, Supabase JS, Electron 33, `vite-plugin-pwa`,
+`electron-builder` and Capacitor 8 (Android).
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - npm 10 or newer
 - Windows 10/11 for the desktop installer
+- Java 21 and Android SDK 36 (`platform-tools`, `platforms;android-36`,
+  `build-tools;36.0.0`) for Android builds
 - macOS/Linux can be used for web development; the provided `.bat`/`.vbs`
   launchers are Windows-only
 
@@ -73,15 +86,17 @@ features remain hidden. Restart the dev server after changing `.env`.
 ### Supabase setup
 
 1. Create a project at <https://supabase.com>.
-2. Run the migrations in `supabase/migrations/` in order (`001` through `008`)
+2. Run the migrations in `supabase/migrations/` in order (`001` through `014`)
    in the Supabase SQL Editor. See [Supabase backend](#supabase-backend) for the
    migration list.
 3. Put the project URL and anon key into `.env` and restart the dev server.
 4. Start the app and sign up with email/password. The first sign-in creates the
    shop and owner profile.
-5. Open **Settings**, find the **Cloud Customers** panel and switch the storage
-   mode to `supabase` when you want cloud data. The app falls back to local
-   storage when Supabase is not configured or the user is signed out.
+5. After sign-in the app switches to Supabase automatically when a cloud account
+   is available. Use **Settings → Cloud Customers** to upload existing local
+   records, switch back to local storage, or re-enable automatic switching. The
+   app falls back to local storage when Supabase is not configured or the user
+   is signed out.
 
 ## Desktop app
 
@@ -106,12 +121,47 @@ The launchers resolve the project directory from their own location, so the
 folder can be moved without editing them. They require `npm install` and run the
 app from source; use the installer build for a standalone desktop app.
 
+## Android app
+
+The Capacitor project lives in `android/`. It targets Android 36, supports
+Android 7.0+ (`minSdk 24`) and uses the same React build as the web app.
+
+```bash
+npm run android:sync # build dist/ and copy it into the native project
+npm run android:open # open android/ in Android Studio
+npm run android:apk  # build a debug APK on Windows
+```
+
+The debug APK is written to
+`android/app/build/outputs/apk/debug/app-debug.apk`. The signed release APK is
+written to `android/app/build/outputs/apk/release/app-release.apk`:
+
+```bash
+npm run android:release
+```
+
+Release signing reads `android/keystore.properties` and the keystore referenced
+by `storeFile`. Both files are git-ignored. Keep the keystore and passwords in a
+safe place: losing them prevents future updates to the same app.
+
+Email confirmation and password-reset links use the
+`com.flowershouse.app://` custom scheme and reopen the app. Add these URLs to
+Supabase **Authentication → URL Configuration → Redirect URLs**:
+
+- `com.flowershouse.app://auth/confirm`
+- `com.flowershouse.app://reset-password`
+
+The mobile layout uses bottom tabs (Dashboard, Orders, Customers, Inventory)
+and a **More** sheet for the remaining screens, language and account controls.
+
 ## Build and package
 
 ```bash
 npm run build       # type-check + production web build into dist/
 npm run pack        # unpacked Electron app in release/
 npm run dist:win    # Windows NSIS installer in release/
+npm run android:apk # debug APK in android/app/build/outputs/apk/debug/
+npm run android:release # signed release APK in android/app/build/outputs/apk/release/
 ```
 
 The packaged app serves the built files through a custom `app://bundle/`
@@ -136,6 +186,9 @@ chosen in Settings.
 | `npm run pack` | Build an unpacked Electron app |
 | `npm run dist` | Build the configured installer |
 | `npm run dist:win` | Build the Windows NSIS installer |
+| `npm run android:sync` | Build the web app and sync it into `android/` |
+| `npm run android:open` | Open the native project in Android Studio |
+| `npm run android:apk` | Build a debug Android APK (Windows) |
 
 ## Architecture
 
@@ -191,7 +244,9 @@ Desktop photo handling:
 
 Backups:
 
-- JSON export/import works in both the browser and desktop app.
+- JSON export/import works in the browser, desktop app and Android app.
+- On Android, creating a backup writes the JSON to the app cache and opens the
+  system share sheet, so it can be saved to Files, Drive, Telegram, etc.
 - Automatic folder backups are desktop-only. Each backup is written as
   `backup-YYYY-MM-DD-HHmm/data.json` plus a copy of the photos folder, and old
   backups are pruned to the configured keep count.
@@ -218,19 +273,33 @@ Google Fonts, and uses the manifest in `public/manifest.json`. The service worke
 is registered only for browser/PWA sessions. Relative asset URLs (`base: './'`)
 keep the same build usable by both the web app and Electron.
 
+### Android shell
+
+`capacitor.config.ts` points Capacitor at `dist/` and uses the app id
+`com.flowershouse.app`. `npx cap sync android` copies the built web assets and
+native plugins into `android/`. The `MobileNav` component replaces the desktop
+sidebar below the `lg` breakpoint with bottom tabs and a **More** sheet.
+`initAuthDeepLinks()` listens for `appUrlOpen` events and converts Supabase
+recovery/confirmation tokens into a local session before opening the matching
+route. Android edge-to-edge layout is handled with `env(safe-area-inset-*)`
+padding and `viewport-fit=cover`.
+
 ### Supabase backend
 
 `src/lib/supabase.ts` creates the client only when both environment variables
-are present. Authentication is email/password. The first sign-in creates the
-shop and owner profile through `create_initial_shop_and_profile`.
+are present. Authentication is email/password with email confirmation and a
+password-reset flow (`/reset-password`). Set `VITE_PUBLIC_APP_URL` so
+confirmation and reset links return to the deployed web app; native builds use
+the `com.flowershouse.app://` scheme instead. The first sign-in creates the shop
+and owner profile through `create_initial_shop_and_profile`.
 
 The schema includes:
 
 `shops`, `user_profiles`, `customers`, `inventory_items`, `bouquets`,
 `bouquet_items`, `orders`, `order_items`, `deliveries`,
 `inventory_transactions`, `inventory_reservations`, `history`, `settings`,
-`user_reminders_read`, `user_reminders_dismissed`, `client_purchases`, `photos`,
-`shop_invites` and `app_meta`.
+`user_reminders_read`, `user_reminders_dismissed`, `client_purchases`,
+`finance_entries`, `photos`, `shop_invites` and `app_meta`.
 
 Apply the migrations in order:
 
@@ -244,6 +313,12 @@ Apply the migrations in order:
 | `006_cloud_parity.sql` | Purchases, photos, reminder state, atomic orders, realtime |
 | `007_rls_hardening.sql` | Role matrix, safe bootstrap, RLS/RPC hardening |
 | `008_team_invites.sql` | One-time team invites, member listing and controlled shop switching |
+| `009_order_sequence_sync.sql` | Keeps `order_number_seq` in sync with migrated `ORD-XXX` ids |
+| `010_order_integrity.sql` | Atomic order + delivery + reservations, reservation-aware stock deduction and stock RPC |
+| `011_nickname_cooldown.sql` | Profile nicknames with a 3-day change cooldown |
+| `012_inventory_intake_fields.sql` | Supplier, SKU, pack note and notes on inventory items |
+| `013_purchase_delivery_address.sql` | Optional delivery address on manually added client purchases |
+| `014_finance_entries.sql` | Owner-only finance cash-book table, RLS and realtime |
 
 Shop data is scoped by `shop_id` and protected by RLS; profile, reminder and
 app-meta rows use their own user/owner policies. Owners can invite managers and
@@ -251,7 +326,8 @@ staff from **Settings → Team** with a one-time email-bound code; acceptance is
 limited to an empty auto-created shop so existing data is never merged silently.
 Cloud mode covers customers,
 inventory (items, transactions, reservations), bouquets, orders, deliveries,
-history, settings, manual purchases, photo files and reminder state. In cloud
+history, settings, manual purchases, finance entries, photo files and reminder
+state. In cloud
 mode the cloud is authoritative: successful reads are cached per user, offline
 reads fall back to that cache, and cloud writes are blocked until reconnect
 (they do not queue for later sync). The local workspace keys are never
@@ -268,9 +344,12 @@ usage behave as the owner of local data.
 | Create and edit business records | yes | yes | yes |
 | Delete business records | yes | yes | no |
 | Cancel orders and edit photos | yes | yes | yes |
-| View statistics, revenue and financial totals | yes | yes | no |
+| View revenue and financial totals | yes | yes | no |
+| View the Statistics page | yes | no | no |
+| Open the Finance page and manage the cash-book | yes | no | no |
 | Open settings and change business settings | yes | yes | no |
-| Manage team and invite codes | yes | no | no |
+| Edit shop information (name, address, phone, email) | yes | no | no |
+| Manage team, transfer ownership and invite codes | yes | no | no |
 | Cloud migration, backup/restore and reset data | yes | no | no |
 
 Hidden buttons are a UX convenience only; Supabase RLS still rejects
@@ -281,6 +360,7 @@ errors such as `email_mismatch` keep it for the next sign-in.
 ## Project structure
 
 ```text
+android/               Capacitor native Android project
 electron/              Electron main process, preload bridges and watchdog
 public/                Static assets, icons and PWA manifest
 scripts/               PowerShell maintenance scripts
@@ -312,11 +392,13 @@ npm run build
 ```
 
 Vitest runs in a Node environment with a `localStorage` mock from
-`src/test/setup.ts`. The sample suites (20 tests) cover formatters, client-status
-rules, inventory calculations and reminder dismissal. GitHub Actions runs lint, type-check, tests and
-the production build on pushes and pull requests, then uploads `dist/` as an
-artifact. Pushes to `main`/`master` and manual dispatches also build and upload
-the Windows NSIS installer.
+`src/test/setup.ts`. The suites (97 tests) cover formatters, client-status rules,
+inventory calculations, finance summaries and editing, notification scheduling,
+reminder dismissal, permissions, cloud health and reconciliation.
+GitHub Actions runs lint, type-check, tests and the production build on pushes
+and pull requests, then uploads `dist/` as an artifact. Every run also builds
+and uploads a debug Android APK. Pushes to `main`/`master` and manual dispatches
+additionally build and upload the Windows NSIS installer.
 
 ## Troubleshooting
 

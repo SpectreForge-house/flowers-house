@@ -8,8 +8,10 @@ import {
   createShopInvite,
   listShopInvites,
   listShopMembers,
+  normalizeInviteToken,
   removeMember,
   revokeShopInvite,
+  transferOwnership,
   updateMemberRole,
 } from '../../services/teamService';
 import { Button } from '../ui/Button';
@@ -17,7 +19,8 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { showToast } from '../ui/Toast';
 
 interface TeamSettingsProps {
-  profile: UserProfile;
+  profile: UserProfile | null;
+  onRefreshProfile?: () => Promise<void>;
 }
 
 function formatDate(value: string): string {
@@ -50,9 +53,9 @@ async function copyText(value: string): Promise<boolean> {
   }
 }
 
-export function TeamSettings({ profile }: TeamSettingsProps) {
+export function TeamSettings({ profile, onRefreshProfile }: TeamSettingsProps) {
   const { t } = useLanguage();
-  const isOwner = profile.role === 'owner';
+  const isOwner = profile?.role === 'owner';
 
   const [members, setMembers] = useState<ShopMember[]>([]);
   const [invites, setInvites] = useState<ShopInvite[]>([]);
@@ -63,9 +66,11 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
   const [createdInvite, setCreatedInvite] = useState<ShopInvite | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<ShopMember | null>(null);
+  const [confirmTransfer, setConfirmTransfer] = useState<ShopMember | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<ShopInvite | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [joining, setJoining] = useState(false);
+  const [refreshingProfile, setRefreshingProfile] = useState(false);
 
   const roleLabel = useCallback(
     (role: UserRole) => {
@@ -176,6 +181,11 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
   const handleRoleChange = async (member: ShopMember, role: UserRole) => {
     if (member.role === role || busyMemberId) return;
 
+    if (role === 'owner') {
+      setConfirmTransfer(member);
+      return;
+    }
+
     setBusyMemberId(member.id);
     try {
       await updateMemberRole(member.id, role);
@@ -184,6 +194,20 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
     } catch (error) {
       console.error('[Team] Failed to update role:', error);
       showToast('error', t.team.roleUpdateError);
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleTransfer = async (member: ShopMember) => {
+    setBusyMemberId(member.id);
+    try {
+      await transferOwnership(member.id, member.role);
+      showToast('success', t.team.transferred);
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      console.error('[Team] Failed to transfer ownership:', error);
+      showToast('error', t.team.transferError);
     } finally {
       setBusyMemberId(null);
     }
@@ -203,12 +227,29 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
     }
   };
 
+  const handleRefreshProfile = async () => {
+    if (!onRefreshProfile || refreshingProfile) return;
+
+    setRefreshingProfile(true);
+    try {
+      await onRefreshProfile();
+    } finally {
+      setRefreshingProfile(false);
+    }
+  };
+
   const handleJoin = async () => {
-    if (!joinCode.trim() || joining) return;
+    const token = normalizeInviteToken(joinCode);
+    if (!token || joining) return;
+
+    if (token.length !== 32) {
+      showToast('error', t.team.joinInvalidCode);
+      return;
+    }
 
     setJoining(true);
     try {
-      const result = await acceptShopInvite(joinCode.trim());
+      const result = await acceptShopInvite(token);
       if (!result.ok) {
         showToast('error', joinErrorLabel(result.error));
         return;
@@ -232,7 +273,7 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
     && invite.id !== createdInvite?.id,
   );
   const ownerCount = members.filter(member => member.role === 'owner').length;
-  const showJoinPanel = members.length <= 1;
+  const showJoinPanel = !isOwner || (!loading && members.length <= 1);
 
   return (
     <div className="bg-card rounded-lg border border-border p-6">
@@ -257,19 +298,38 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
         )}
       </div>
 
-      {!isOwner ? (
+      {!profile && (
+        <div className="rounded-lg bg-surface border border-border p-4 space-y-3">
+          <p className="text-sm text-text-secondary">{t.team.profileUnavailable}</p>
+          {onRefreshProfile && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleRefreshProfile()}
+              isLoading={refreshingProfile}
+            >
+              {t.permissions.retry}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {profile && !isOwner && (
         <div className="rounded-lg bg-surface border border-border p-4 space-y-1">
           <p className="text-sm text-text-secondary">{t.team.onlyOwner}</p>
           <p className="text-sm text-text-primary">
             {t.team.yourRole}: <span className="font-medium">{roleLabel(profile.role)}</span>
           </p>
         </div>
-      ) : loading ? (
+      )}
+
+      {isOwner && (loading ? (
         <p className="text-sm text-text-muted">{t.team.loading}</p>
       ) : (
         <div className="space-y-6">
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-text-primary">{t.team.members}</h3>
+            <p className="text-xs text-text-muted">{t.team.transferHint}</p>
             {members.map(member => {
               const isLastOwner = member.role === 'owner' && ownerCount <= 1;
               const busy = busyMemberId === member.id;
@@ -417,34 +477,38 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
             </div>
           </section>
 
-          {showJoinPanel && (
-            <section className="border-t border-border pt-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <KeyRound size={16} className="text-accent-green-light" />
-                <h3 className="text-sm font-semibold text-text-primary">{t.team.joinTitle}</h3>
-              </div>
-              <p className="text-xs text-text-secondary">{t.team.joinDescription}</p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={joinCode}
-                  onChange={event => setJoinCode(event.target.value)}
-                  placeholder={t.team.joinCodePlaceholder}
-                  aria-label={t.team.joinCode}
-                  className="flex-1 min-w-0 px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-muted focus:border-accent outline-none text-sm font-mono"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => void handleJoin()}
-                  disabled={!joinCode.trim() || joining}
-                  isLoading={joining}
-                >
-                  {joining ? t.team.joining : t.team.join}
-                </Button>
-              </div>
-            </section>
-          )}
         </div>
+      ))}
+
+      {showJoinPanel && (
+        <section className="border-t border-border mt-4 pt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <KeyRound size={16} className="text-accent-green-light" />
+            <h3 className="text-sm font-semibold text-text-primary">{t.team.joinTitle}</h3>
+          </div>
+          <p className="text-xs text-text-secondary">{t.team.joinDescription}</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={joinCode}
+              onChange={event => setJoinCode(normalizeInviteToken(event.target.value))}
+              placeholder={t.team.joinCodePlaceholder}
+              aria-label={t.team.joinCode}
+              className="flex-1 min-w-0 px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-muted focus:border-accent outline-none text-sm font-mono"
+            />
+            <Button
+              size="sm"
+              onClick={() => void handleJoin()}
+              disabled={!joinCode || joining}
+              isLoading={joining}
+            >
+              {joining ? t.team.joining : t.team.join}
+            </Button>
+          </div>
+        </section>
       )}
 
       <ConfirmDialog
@@ -460,6 +524,21 @@ export function TeamSettings({ profile }: TeamSettingsProps) {
         )}
         confirmLabel={t.team.removeMember}
         cancelLabel={t.common.cancel}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmTransfer !== null}
+        onClose={() => setConfirmTransfer(null)}
+        onConfirm={() => {
+          if (confirmTransfer) void handleTransfer(confirmTransfer);
+        }}
+        title={t.team.transferTitle}
+        message={t.team.transferConfirm
+          .split('{name}')
+          .join(confirmTransfer?.displayName || confirmTransfer?.email || t.team.member)}
+        confirmLabel={t.team.transferAction}
+        cancelLabel={t.common.cancel}
+        variant="warning"
       />
 
       <ConfirmDialog

@@ -13,6 +13,7 @@ import { StatusBadge } from './StatusBadge';
 import { getClientStatus } from '../../services/clientStatusService';
 import { PurchaseForm } from './PurchaseForm';
 import { PurchaseDetail } from './PurchaseDetail';
+import { LastPurchaseDateModal } from './LastPurchaseDateModal';
 
 interface CustomerDetailProps {
   customer: Customer;
@@ -37,14 +38,18 @@ export function CustomerDetail({ customer, orders, bouquets, onClose, onChanged,
   const [editingPurchase, setEditingPurchase] = useState<ClientPurchase | null>(null);
   const [detailEntry, setDetailEntry] = useState<PurchaseHistoryEntry | null>(null);
   const [repeatingEntry, setRepeatingEntry] = useState<PurchaseHistoryEntry | null>(null);
+  const [editingLastDate, setEditingLastDate] = useState<PurchaseHistoryEntry | null>(null);
 
   const entries = useMemo(
-    () => buildPurchaseHistory(customer.id, orders, bouquets),
+    () => buildPurchaseHistory(customer.id, orders, bouquets, purchases),
     // `purchases` is the state copy of the manual entries - included so the
     // list and the statistics update immediately after add/edit/delete.
     [customer.id, orders, bouquets, purchases],
   );
   const stats = useMemo(() => getPurchaseStats(entries), [entries]);
+  // Entries are sorted newest first, so the first one is the purchase whose
+  // date is shown in the "Last purchase" tile.
+  const latestEntry = entries[0] ?? null;
   // Derived from live data - updates the moment a purchase is added/deleted.
   const status = useMemo(
     () => getClientStatus(customer.id, orders, bouquets, settings.clientStatus),
@@ -127,6 +132,8 @@ export function CustomerDetail({ customer, orders, bouquets, onClose, onChanged,
                   <StatTile
                     label={t.purchases.lastPurchase}
                     value={stats.lastDate ? formatDate(stats.lastDate) : '—'}
+                    onEdit={latestEntry ? () => setEditingLastDate(latestEntry) : undefined}
+                    editLabel={t.purchases.editLastPurchaseDate}
                   />
                 </div>
 
@@ -195,17 +202,61 @@ export function CustomerDetail({ customer, orders, bouquets, onClose, onChanged,
           onChanged={handleChanged}
         />
       )}
+
+      {editingLastDate && (
+        <LastPurchaseDateModal
+          entry={editingLastDate}
+          onClose={() => setEditingLastDate(null)}
+          onSaved={handleChanged}
+        />
+      )}
     </>
   );
 }
 
-function StatTile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function StatTile({
+  label,
+  value,
+  highlight,
+  onEdit,
+  editLabel,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  onEdit?: () => void;
+  editLabel?: string;
+}) {
+  const content = (
+    <>
+      <span className="block pr-5 text-xs text-text-secondary">{label}</span>
+      <span className={`block text-lg font-semibold mt-0.5 ${highlight ? 'text-status-success' : 'text-text-primary'}`}>
+        {value}
+      </span>
+    </>
+  );
+
+  if (onEdit) {
+    return (
+      <button
+        type="button"
+        onClick={onEdit}
+        title={editLabel}
+        aria-label={editLabel}
+        className="group relative bg-surface border border-border rounded-lg p-3 text-left hover:border-accent-green/50 transition-colors"
+      >
+        {content}
+        <Edit
+          size={14}
+          className="absolute right-2 top-2 text-text-muted group-hover:text-accent-green-light transition-colors"
+        />
+      </button>
+    );
+  }
+
   return (
     <div className="bg-surface border border-border rounded-lg p-3">
-      <p className="text-xs text-text-secondary">{label}</p>
-      <p className={`text-lg font-semibold mt-0.5 ${highlight ? 'text-status-success' : 'text-text-primary'}`}>
-        {value}
-      </p>
+      {content}
     </div>
   );
 }
@@ -242,6 +293,12 @@ function EntryCard({
             </span>
             <span className="text-xs text-text-muted">{formatDate(entry.date)}</span>
           </div>
+          {entry.deliveryAddress && (
+            <p className="flex items-center gap-1 text-xs text-text-muted mt-1 min-w-0">
+              <MapPin size={11} className="shrink-0" />
+              <span className="truncate">{entry.deliveryAddress}</span>
+            </p>
+          )}
         </div>
         <p className="text-sm font-semibold text-status-success shrink-0">
           {formatCurrency(entry.price)}

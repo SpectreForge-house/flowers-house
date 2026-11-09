@@ -22,6 +22,10 @@ function rowToItem(row: Record<string, unknown>): InventoryItem {
     unit: row.unit as InventoryItem['unit'],
     capacity: row.capacity != null ? Number(row.capacity) : undefined,
     capacityUnit: (row.capacity_unit as 'L' | 'ml') || undefined,
+    supplier: (row.supplier as string) || undefined,
+    supplierSku: (row.supplier_sku as string) || undefined,
+    packNote: (row.pack_note as string) || undefined,
+    notes: (row.notes as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -90,6 +94,10 @@ export class SupabaseInventoryAdapter implements InventoryStorageAdapter {
       unit: item.unit,
       capacity: item.capacity ?? null,
       capacity_unit: item.capacityUnit || null,
+      supplier: item.supplier || null,
+      supplier_sku: item.supplierSku || null,
+      pack_note: item.packNote || null,
+      notes: item.notes || null,
       created_at: item.createdAt,
       updated_at: item.updatedAt,
     };
@@ -114,6 +122,10 @@ export class SupabaseInventoryAdapter implements InventoryStorageAdapter {
         unit: item.unit,
         capacity: item.capacity ?? null,
         capacity_unit: item.capacityUnit || null,
+        supplier: item.supplier || null,
+        supplier_sku: item.supplierSku || null,
+        pack_note: item.packNote || null,
+        notes: item.notes || null,
         updated_at: item.updatedAt,
       })
       .eq('id', item.id);
@@ -322,4 +334,27 @@ export async function deductInventoryForOrderRpc(orderId: string, items: { inven
   });
 
   if (error) throw new Error(`Failed to deduct inventory: ${error.message}`);
+}
+
+export async function adjustInventoryStockRpc(params: {
+  itemId: string;
+  quantity: number;
+  type: 'add' | 'remove' | 'waste';
+  reason: string;
+  transactionId?: string;
+  comment?: string;
+}): Promise<number> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { data, error } = await supabase.rpc('adjust_inventory_stock', {
+    p_item_id: params.itemId,
+    p_quantity: params.quantity,
+    p_type: params.type,
+    p_reason: params.reason,
+    p_transaction_id: params.transactionId ?? null,
+    p_comment: params.comment ?? null,
+  });
+
+  if (error) throw new Error(`Failed to adjust inventory: ${error.message}`);
+  return Number(data);
 }

@@ -12,19 +12,22 @@ describe('permissions', () => {
     expect(permissionsForRole('owner')).toEqual({
       manageTeam: true,
       manageSettings: true,
+      editShopInfo: true,
       viewStatistics: true,
       deleteRecords: true,
       resetData: true,
       backupRestore: true,
       manageCloud: true,
       viewFinancials: true,
+      manageFinance: true,
     });
   });
 
-  it('lets managers manage data and settings but not team, backup or reset', () => {
+  it('lets managers manage data and business settings but not team, backup or reset', () => {
     expect(hasPermission('manager', 'manageSettings')).toBe(true);
     expect(hasPermission('manager', 'deleteRecords')).toBe(true);
-    expect(hasPermission('manager', 'viewStatistics')).toBe(true);
+    expect(hasPermission('manager', 'editShopInfo')).toBe(false);
+    expect(hasPermission('manager', 'viewStatistics')).toBe(false);
     expect(hasPermission('manager', 'manageTeam')).toBe(false);
     expect(hasPermission('manager', 'resetData')).toBe(false);
     expect(hasPermission('manager', 'backupRestore')).toBe(false);
@@ -35,12 +38,14 @@ describe('permissions', () => {
     const privileged: Permission[] = [
       'manageTeam',
       'manageSettings',
+      'editShopInfo',
       'viewStatistics',
       'deleteRecords',
       'resetData',
       'backupRestore',
       'manageCloud',
       'viewFinancials',
+      'manageFinance',
     ];
 
     for (const permission of privileged) {
@@ -52,12 +57,14 @@ describe('permissions', () => {
     expect(permissionsForRole(null)).toEqual({
       manageTeam: false,
       manageSettings: false,
+      editShopInfo: false,
       viewStatistics: false,
       deleteRecords: false,
       resetData: false,
       backupRestore: false,
       manageCloud: false,
       viewFinancials: false,
+      manageFinance: false,
     });
   });
 
@@ -75,9 +82,13 @@ describe('permissions', () => {
   it('protects privileged routes and leaves regular routes open', () => {
     expect(canAccessPath('staff', '/statistics')).toBe(false);
     expect(canAccessPath('staff', '/settings')).toBe(false);
-    expect(canAccessPath('manager', '/statistics')).toBe(true);
+    expect(canAccessPath('manager', '/statistics')).toBe(false);
+    expect(canAccessPath('owner', '/statistics')).toBe(true);
     expect(canAccessPath('manager', '/settings')).toBe(true);
     expect(canAccessPath('staff', '/orders')).toBe(true);
     expect(canAccessPath('staff', '/themes')).toBe(true);
+    expect(canAccessPath('owner', '/finance')).toBe(true);
+    expect(canAccessPath('manager', '/finance')).toBe(false);
+    expect(canAccessPath('staff', '/finance')).toBe(false);
   });
 });

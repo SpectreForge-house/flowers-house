@@ -128,7 +128,10 @@ export function ToastContainer() {
   if (visibleToasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 sm:max-w-sm">
+    <div
+      className="fixed bottom-20 lg:bottom-4 right-4 left-4 sm:left-auto z-[100] flex flex-col gap-2 sm:max-w-sm"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {visibleToasts.map(toast => (
         <ToastItem
           key={toast.id}

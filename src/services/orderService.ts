@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Order, OrderStatus, Customer, Delivery } from '../types';
-import { getOrders, saveOrders, addDelivery, getCustomers, saveCustomers, deleteDeliveryByOrderId, getDeliveries, saveDeliveries } from './storage';
-import { releaseReservationsForOrder } from './reservationService';
-import { completeReservationsForOrder } from './reservationService';
+import { Order, OrderStatus, Delivery, InventoryReservation } from '../types';
+import { getOrders, saveOrders, addDelivery, getCustomers, saveCustomers, deleteDeliveryByOrderId, getDeliveries, saveDeliveries, getReservations, saveReservations } from './storage';
+import { createReservation, PendingReservation, releaseReservationsForOrder, completeReservationsForOrder } from './reservationService';
 import { photoOwnerKey, removeOwnerPhotos } from './photoStorage';
 import { InventoryStorageAdapter } from './inventoryStorageAdapter';
 import { OrderStorageAdapter } from './orderStorageAdapter';
@@ -19,67 +18,69 @@ export function generateOrderId(): string {
 export async function createOrder(
   orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'inventoryDeducted'>,
   orderAdapter?: OrderStorageAdapter,
+  pendingReservations: PendingReservation[] = [],
 ): Promise<Order> {
   const now = new Date().toISOString();
+  const orderId = orderAdapter ? await orderAdapter.generateOrderId() : generateOrderId();
 
-  if (orderAdapter) {
-    const orderId = await orderAdapter.generateOrderId();
-
-    const order: Order = {
-      ...orderData,
-      id: orderId,
-      inventoryDeducted: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await orderAdapter.addOrder(order);
-
-    const delivery: Delivery = {
-      id: uuidv4(),
-      orderId: order.id,
-      address: order.deliveryAddress,
-      customerName: order.customerName,
-      recipientName: order.recipientName,
-      phone: order.recipientPhone || order.customerPhone,
-      scheduledTime: order.deliveryTime,
-      scheduledDate: order.deliveryDate,
-      status: 'waiting',
-      notes: order.comment,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await orderAdapter.addDelivery(delivery);
-
-    return order;
-  }
-
-  // Local mode
   const order: Order = {
     ...orderData,
-    id: generateOrderId(),
+    id: orderId,
     inventoryDeducted: false,
     createdAt: now,
     updatedAt: now,
   };
 
-  addOrder(order);
+  const delivery: Delivery | undefined = order.orderType === 'in_store'
+    ? undefined
+    : {
+        id: uuidv4(),
+        orderId: order.id,
+        address: order.deliveryAddress,
+        customerName: order.customerName,
+        recipientName: order.recipientName,
+        phone: order.recipientPhone || order.customerPhone,
+        scheduledTime: order.deliveryTime,
+        scheduledDate: order.deliveryDate,
+        status: 'waiting',
+        notes: order.comment,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-  const delivery: Delivery = {
-    id: uuidv4(),
-    orderId: order.id,
-    address: order.deliveryAddress,
-    customerName: order.customerName,
-    recipientName: order.recipientName,
-    phone: order.recipientPhone || order.customerPhone,
-    scheduledTime: order.deliveryTime,
-    scheduledDate: order.deliveryDate,
-    status: 'waiting',
-    notes: order.comment,
-    createdAt: now,
-    updatedAt: now,
-  };
-  addDelivery(delivery);
+  if (orderAdapter) {
+    const reservations: InventoryReservation[] = pendingReservations.map(reservation => ({
+      id: uuidv4(),
+      orderId: order.id,
+      inventoryItemId: reservation.inventoryItemId,
+      quantity: reservation.quantity,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    await orderAdapter.addOrder(order, delivery, reservations);
+    return order;
+  }
+
+  // Local mode: write the order and delivery first, then reserve stock. If a
+  // reservation fails, roll the order and delivery back so the data stays
+  // consistent.
+  addOrder(order);
+  if (delivery) addDelivery(delivery);
+
+  const createdReservationIds: string[] = [];
+  for (const pending of pendingReservations) {
+    const result = await createReservation(order.id, pending.inventoryItemId, pending.quantity);
+    if (!result.success) {
+      const created = new Set(createdReservationIds);
+      saveReservations(getReservations().filter(r => !created.has(r.id)));
+      saveOrders(getOrders().filter(o => o.id !== order.id));
+      if (delivery) deleteDeliveryByOrderId(order.id);
+      throw new Error(result.error || 'Failed to reserve inventory');
+    }
+    if (result.reservation) createdReservationIds.push(result.reservation.id);
+  }
 
   return order;
 }
@@ -118,17 +119,21 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, ad
     await orderAdapter.updateOrder(order);
 
     if (status === 'cancelled') {
-      await orderAdapter.deleteDeliveryByOrderId(orderId);
+      if (order.orderType !== 'in_store') {
+        await orderAdapter.deleteDeliveryByOrderId(orderId);
+      }
       await releaseReservationsForOrder(orderId, adapter);
     }
 
     if (status === 'completed') {
-      const deliveries = await orderAdapter.getDeliveries();
-      const delivery = deliveries.find(d => d.orderId === orderId);
-      if (delivery) {
-        delivery.status = 'delivered';
-        delivery.updatedAt = new Date().toISOString();
-        await orderAdapter.updateDelivery(delivery);
+      if (order.orderType !== 'in_store') {
+        const deliveries = await orderAdapter.getDeliveries();
+        const delivery = deliveries.find(d => d.orderId === orderId);
+        if (delivery) {
+          delivery.status = 'delivered';
+          delivery.updatedAt = new Date().toISOString();
+          await orderAdapter.updateDelivery(delivery);
+        }
       }
       await completeReservationsForOrder(orderId, adapter);
     }
@@ -147,23 +152,49 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, ad
   saveOrders(orders);
 
   if (status === 'cancelled') {
-    deleteDeliveryByOrderId(orderId);
+    if (order.orderType !== 'in_store') {
+      deleteDeliveryByOrderId(orderId);
+    }
     await releaseReservationsForOrder(orderId, adapter);
   }
 
   if (status === 'completed') {
-    // Sync delivery status to 'delivered'
-    const deliveries = getDeliveries();
-    const delivery = deliveries.find(d => d.orderId === orderId);
-    if (delivery) {
-      delivery.status = 'delivered';
-      delivery.updatedAt = new Date().toISOString();
-      saveDeliveries(deliveries);
+    if (order.orderType !== 'in_store') {
+      // Sync delivery status to 'delivered'
+      const deliveries = getDeliveries();
+      const delivery = deliveries.find(d => d.orderId === orderId);
+      if (delivery) {
+        delivery.status = 'delivered';
+        delivery.updatedAt = new Date().toISOString();
+        saveDeliveries(deliveries);
+      }
     }
     // Complete reservations for this order
     await completeReservationsForOrder(orderId, adapter);
   }
 
+  return order;
+}
+
+/**
+ * Changes the date an order is recorded under in the client's purchase
+ * history. Orders use `createdAt` as their purchase date, so only the date
+ * part is replaced and the original time of day is kept for stable sorting.
+ */
+export async function updateOrderPurchaseDate(
+  orderId: string,
+  date: string,
+  orderAdapter: OrderStorageAdapter,
+): Promise<Order | null> {
+  const orders = await orderAdapter.getOrders();
+  const order = orders.find(o => o.id === orderId);
+  if (!order) return null;
+
+  const time = order.createdAt.match(/T(\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/)?.[1]
+    ?? '12:00:00.000Z';
+  order.createdAt = `${date}T${time}`;
+  order.updatedAt = new Date().toISOString();
+  await orderAdapter.updateOrder(order);
   return order;
 }
 
@@ -217,9 +248,6 @@ export function updateCustomerOrderStats(customerId: string): void {
   const customer = customers.find(c => c.id === customerId);
   if (!customer) return;
 
-  const orders = getOrders().filter(o => o.customerId === customerId);
-  const completedOrders = orders.filter(o => o.status === 'completed');
-  
   customer.updatedAt = new Date().toISOString();
   saveCustomers(customers);
 }

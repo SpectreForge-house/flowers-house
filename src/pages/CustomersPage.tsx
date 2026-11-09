@@ -1,9 +1,9 @@
 ﻿import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, Plus, Phone, Mail, MapPin, ShoppingBag, Edit, Trash2, Flower2, Eye } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, ShoppingBag, Edit, Trash2, Flower2, Eye, ArrowUpDown, ChevronDown } from 'lucide-react';
 import { Customer, ImportantDate, ImportantDateType } from '../types';
-import { getCustomerStats } from '../services/customerService';
+import { buildPurchaseHistory, getPurchaseStats } from '../services/purchaseService';
 import { recordHistory } from '../services/historyService';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { showToast } from '../components/ui/Toast';
@@ -12,7 +12,7 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { AnimatedListItem } from '../components/ui/AnimatedListItem';
 import { useLanguage } from '../i18n';
-import { useCustomers, useOrders, useBouquets, getHistoryAdapter } from '../hooks/useStore';
+import { useCustomers, useOrders, useBouquets, usePurchases, getHistoryAdapter } from '../hooks/useStore';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { isSupabaseAvailable } from '../services/authService';
@@ -22,6 +22,7 @@ import { StatusBadge } from '../components/customers/StatusBadge';
 import { useSettings } from '../hooks/useStore';
 import { getClientStatus } from '../services/clientStatusService';
 import { CustomerDetail } from '../components/customers/CustomerDetail';
+import { PurchaseForm } from '../components/customers/PurchaseForm';
 import { removeCustomerPurchases } from '../services/purchaseService';
 import { PhotoPicker } from '../components/ui/PhotoPicker';
 import { DiscardChangesDialog } from '../components/ui/DiscardChangesDialog';
@@ -36,24 +37,38 @@ type CustomerFormValues = Omit<Customer, 'id' | 'createdAt' | 'updatedAt'> & {
   photoRemoved?: boolean;
 };
 
+type CustomerSort = 'nameAsc' | 'nameDesc' | 'newest' | 'totalDesc';
+
+const SORT_OPTIONS: CustomerSort[] = ['nameAsc', 'nameDesc', 'newest', 'totalDesc'];
+
 export function CustomersPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const { can } = usePermissions();
   const canDelete = can('deleteRecords');
   const canManageCloud = can('manageCloud');
   const { customers, loading, refresh, addCustomer, updateCustomer, deleteCustomer } = useCustomers();
   const { orders: allOrders, refresh: refreshOrders } = useOrders();
+  const { purchases, refresh: refreshPurchases } = usePurchases();
   const { bouquets } = useBouquets();
   const { settings } = useSettings();
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<CustomerSort>('nameAsc');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [purchaseCustomer, setPurchaseCustomer] = useState<Customer | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [newCustomerId, setNewCustomerId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (!newCustomerId) return;
+    const timer = setTimeout(() => setNewCustomerId(null), 900);
+    return () => clearTimeout(timer);
+  }, [newCustomerId]);
 
   // Deep link ?client=<id> (used by the "Upcoming client dates" block on the
   // Home page): open the client's detail card right away.
@@ -82,7 +97,51 @@ export function CustomersPage() {
     return customers;
   }, [customers, searchQuery]);
 
-  const handleCreateCustomer = async (data: CustomerFormValues) => {
+  // The card statistics must match the client's detail view: a client's
+  // history is the union of their orders and the manually added purchases.
+  // `purchases` is a dependency only to recompute after add/edit/delete.
+  const statsByCustomer = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getPurchaseStats>>();
+    for (const customer of customers) {
+      map.set(
+        customer.id,
+        getPurchaseStats(buildPurchaseHistory(customer.id, allOrders, bouquets, purchases)),
+      );
+    }
+    return map;
+  }, [customers, allOrders, bouquets, purchases]);
+
+  // Alphabetical order must follow the selected language's alphabet (Cyrillic
+  // in Russian/Bulgarian), so a locale-aware collator is used instead of the
+  // raw string comparison. Sorting is applied after the search filter.
+  const sortedCustomers = useMemo(() => {
+    const list = [...filteredCustomers];
+    const collator = new Intl.Collator(language, { sensitivity: 'base', numeric: true });
+
+    switch (sortBy) {
+      case 'nameDesc':
+        list.sort((a, b) => collator.compare(b.name, a.name));
+        break;
+      case 'newest':
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        break;
+      case 'totalDesc':
+        list.sort(
+          (a, b) =>
+            (statsByCustomer.get(b.id)?.total ?? 0) - (statsByCustomer.get(a.id)?.total ?? 0),
+        );
+        break;
+      default:
+        list.sort((a, b) => collator.compare(a.name, b.name));
+    }
+
+    return list;
+  }, [filteredCustomers, sortBy, language, statsByCustomer]);
+
+  const handleCreateCustomer = async (
+    data: CustomerFormValues,
+    options?: { addBouquet?: boolean },
+  ) => {
     const { photoFile, photoRemoved, ...values } = data;
     const now = new Date().toISOString();
     const customer: Customer = {
@@ -93,6 +152,7 @@ export function CustomersPage() {
     };
     try {
       await addCustomer(customer);
+      setNewCustomerId(customer.id);
       void recordHistory('customer_created', 'customer', customer.id, `Customer "${customer.name}" created`, { phone: customer.phone }, getHistoryAdapter());
       setShowCreateModal(false);
       // The client exists now - the typed draft must not resurface next time.
@@ -102,6 +162,9 @@ export function CustomersPage() {
       // photo shows up immediately instead of after the next page reload.
       if (photoFile || photoRemoved) void refresh();
       showToast(photoError ? 'error' : 'success', photoError || t.customers.createdSuccessfully);
+      // Straight into the bouquet form: adding a purchase must not require
+      // opening the freshly created client card first.
+      if (options?.addBouquet) setPurchaseCustomer(customer);
     } catch (err: any) {
       const msg = err?.message || String(err);
       console.error('[CustomersPage] Create customer FAILED:', msg, err);
@@ -221,22 +284,48 @@ export function CustomersPage() {
 
       {supabaseReady && canManageCloud && <CloudSyncPanel />}
 
-      <div className="relative">
-        <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-        <input
-          type="text"
-          placeholder={t.customers.searchPlaceholder}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-card border border-border rounded-lg text-text-primary placeholder-text-muted focus:border-accent"
-        />
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            type="text"
+            placeholder={t.customers.searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-card border border-border rounded-lg text-text-primary placeholder-text-muted focus:border-accent"
+          />
+        </div>
+        <div className="relative">
+          <ArrowUpDown size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as CustomerSort)}
+            aria-label={t.customers.sort.label}
+            className="w-full sm:w-auto pl-10 pr-10 py-2 bg-card border border-border rounded-lg text-text-primary appearance-none focus:border-accent"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option} value={option}>{t.customers.sort[option]}</option>
+            ))}
+          </select>
+          <ChevronDown size={20} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCustomers.map((customer) => {
-          const stats = getCustomerStats(customer.id, allOrders);
+        {sortedCustomers.map((customer) => {
+          const stats = statsByCustomer.get(customer.id) ?? {
+            count: 0,
+            total: 0,
+            average: 0,
+            lastDate: null,
+          };
           return (
-            <AnimatedListItem key={customer.id} isDeleting={deletingId === customer.id} variant="slide-up">
+            <AnimatedListItem
+              key={customer.id}
+              isDeleting={deletingId === customer.id}
+              variant="slide-up"
+              animateOnMount={newCustomerId === customer.id}
+            >
               <div
                 className="bg-card rounded-lg border border-border p-4 hover:border-elevated transition-colors"
               >
@@ -248,10 +337,12 @@ export function CustomersPage() {
                       <h3 className="text-text-primary font-medium truncate">{customer.name}</h3>
                       <StatusBadge status={getClientStatus(customer.id, allOrders, bouquets, settings.clientStatus)} />
                     </div>
-                    <div className="flex items-center gap-1 text-text-secondary text-sm mt-1">
-                      <Phone size={14} />
-                      {customer.phone}
-                    </div>
+                    {customer.phone && (
+                      <div className="flex items-center gap-1 text-text-secondary text-sm mt-1">
+                        <Phone size={14} />
+                        {customer.phone}
+                      </div>
+                    )}
                     {customer.email && (
                       <div className="flex items-center gap-1 text-text-secondary text-sm mt-1">
                         <Mail size={14} />
@@ -295,11 +386,11 @@ export function CustomersPage() {
               <div className="flex items-center gap-4 pt-3 border-t border-border">
                 <div className="flex items-center gap-1">
                   <ShoppingBag size={14} className="text-text-muted" />
-                  <span className="text-text-primary text-sm">{stats.totalOrders} {t.customers.orders}</span>
+                  <span className="text-text-primary text-sm">{stats.count} {t.customers.orders}</span>
                 </div>
                 <div>
                   <span className="text-status-success text-sm font-medium">
-                    {formatCurrency(stats.totalSpent)}
+                    {formatCurrency(stats.total)}
                   </span>
                 </div>
               </div>
@@ -368,6 +459,19 @@ export function CustomersPage() {
         />
       )}
 
+      {purchaseCustomer && (
+        <PurchaseForm
+          customer={purchaseCustomer}
+          onClose={() => setPurchaseCustomer(null)}
+          onSaved={() => {
+            void refresh();
+            void refreshOrders();
+            void refreshPurchases();
+            setPurchaseCustomer(null);
+          }}
+        />
+      )}
+
       {selectedCustomer && (
         <CustomerDetail
           customer={selectedCustomer}
@@ -377,6 +481,7 @@ export function CustomersPage() {
           onChanged={() => {
             void refresh();
             void refreshOrders();
+            void refreshPurchases();
           }}
           onEditCustomer={(customer) => {
             setSelectedCustomer(null);
@@ -421,7 +526,7 @@ function CustomerForm({
 }: {
   customer?: Customer;
   onClose: () => void;
-  onSubmit: (data: CustomerFormValues) => void;
+  onSubmit: (data: CustomerFormValues, options?: { addBouquet?: boolean }) => void;
 }) {
   const { t } = useLanguage();
   // Editing starts from the saved record; adding restores the draft of the
@@ -435,6 +540,7 @@ function CustomerForm({
   const [notes, setNotes] = useState(customer?.notes || restoredDraft?.notes || '');
   const [preferences, setPreferences] = useState(customer?.preferences || restoredDraft?.preferences || '');
   const [importantDates, setImportantDates] = useState<ImportantDate[]>(customer?.importantDates || []);
+  const [addBouquet, setAddBouquet] = useState(false);
   const [datesError, setDatesError] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -484,9 +590,10 @@ function CustomerForm({
     notes !== initial.notes ||
     preferences !== initial.preferences ||
     datesKey(importantDates) !== initial.dates ||
+    addBouquet ||
     pendingPhoto !== null ||
     photoRemoved
-  ), [name, phone, email, address, notes, preferences, importantDates, pendingPhoto, photoRemoved, initial]);
+  ), [name, phone, email, address, notes, preferences, importantDates, addBouquet, pendingPhoto, photoRemoved, initial]);
 
   const guard = useCloseGuard({
     isDirty,
@@ -539,14 +646,15 @@ function CustomerForm({
   };
 
   const handleSubmit = () => {
-    if (!name || !phone) {
-      showToast('error', t.customers.nameAndPhoneRequired);
+    if (!name.trim()) {
+      showToast('error', t.customers.nameRequired);
       return;
     }
 
     let hasError = false;
 
-    if (!isValidPhone(phone)) {
+    // Phone is optional now: only a non-empty value has to be valid.
+    if (phone.trim() && !isValidPhone(phone)) {
       setPhoneError(t.customers.invalidPhone);
       phoneRef.current?.focus();
       hasError = true;
@@ -583,7 +691,7 @@ function CustomerForm({
         })),
       photoFile: pendingPhoto,
       photoRemoved,
-    });
+    }, customer ? undefined : { addBouquet });
   };
 
   return (
@@ -608,7 +716,10 @@ function CustomerForm({
           />
         </div>
         <div>
-          <label className="block text-sm text-text-secondary mb-1">{t.common.phone} *</label>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label className="block text-sm text-text-secondary">{t.common.phone}</label>
+            <span className="text-xs text-text-muted">{t.customers.phoneOptional}</span>
+          </div>
           <input
             ref={phoneRef}
             type="tel"
@@ -681,7 +792,7 @@ function CustomerForm({
                       className="px-2 py-2 bg-card border border-border rounded-lg text-text-primary text-sm"
                     >
                       <option value="birthday">{t.clientDates.types.birthday}</option>
-                      <option value="name_day">{t.clientDates.types.nameDay}</option>
+                      <option value="name_day">{t.clientDates.types.name_day}</option>
                       <option value="anniversary">{t.clientDates.types.anniversary}</option>
                       <option value="other">{t.clientDates.types.other}</option>
                     </select>
@@ -726,6 +837,21 @@ function CustomerForm({
           )}
           {datesError && <p className="text-xs text-status-danger mb-2">{t.clientDates.dateRequired}</p>}
         </div>
+
+        {!customer && (
+          <label className="flex items-start gap-3 rounded-lg bg-surface border border-border p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={addBouquet}
+              onChange={(e) => setAddBouquet(e.target.checked)}
+              className="mt-0.5 accent-accent"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm text-text-primary">{t.customers.addBouquetAfter}</span>
+              <span className="block text-xs text-text-muted mt-0.5">{t.customers.addBouquetAfterHint}</span>
+            </span>
+          </label>
+        )}
 
         <div className="flex gap-3 pt-4">
           <Button variant="secondary" onClick={guard.requestClose} className="flex-1">

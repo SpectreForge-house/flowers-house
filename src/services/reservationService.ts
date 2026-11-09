@@ -1,11 +1,39 @@
 import { v4 as uuidv4 } from 'uuid';
-import { InventoryReservation, InventoryItem } from '../types';
-import { getReservations, saveReservations, getInventory, saveInventory } from './storage';
+import { InventoryReservation, InventoryItem, OrderItem, Bouquet } from '../types';
+import { getReservations, saveReservations, getInventory } from './storage';
 import { InventoryStorageAdapter } from './inventoryStorageAdapter';
 import { HistoryStorageAdapter } from './historyStorageAdapter';
 import { recordHistory } from './historyService';
 
-export async function createReservation(orderId: string, inventoryItemId: string, quantity: number, adapter?: InventoryStorageAdapter, historyAdapter?: HistoryStorageAdapter): Promise<{ success: boolean; error?: string }> {
+export interface PendingReservation {
+  inventoryItemId: string;
+  quantity: number;
+}
+
+/**
+ * Expands order items into the raw inventory units they consume. The result is
+ * sent to the database together with the order so order, delivery and
+ * reservations are written in one transaction.
+ */
+export function buildPendingReservations(items: OrderItem[], bouquets: Bouquet[]): PendingReservation[] {
+  const reservations: PendingReservation[] = [];
+
+  for (const orderItem of items) {
+    const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
+    if (!bouquet) continue;
+
+    for (const bouquetItem of bouquet.items) {
+      reservations.push({
+        inventoryItemId: bouquetItem.inventoryItemId,
+        quantity: bouquetItem.quantity * orderItem.quantity,
+      });
+    }
+  }
+
+  return reservations;
+}
+
+export async function createReservation(orderId: string, inventoryItemId: string, quantity: number, adapter?: InventoryStorageAdapter, historyAdapter?: HistoryStorageAdapter): Promise<{ success: boolean; error?: string; reservation?: InventoryReservation }> {
   const reservations = adapter ? await adapter.getReservations() : getReservations();
   const inventory = adapter ? await adapter.getInventory() : getInventory();
   const item = inventory.find(i => i.id === inventoryItemId);
@@ -46,7 +74,7 @@ export async function createReservation(orderId: string, inventoryItemId: string
     unit: item.unit,
   }, historyAdapter);
 
-  return { success: true };
+  return { success: true, reservation };
 }
 
 export async function releaseReservation(reservationId: string, adapter?: InventoryStorageAdapter, historyAdapter?: HistoryStorageAdapter): Promise<void> {

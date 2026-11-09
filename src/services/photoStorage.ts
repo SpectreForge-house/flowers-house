@@ -39,7 +39,7 @@ const SAFE_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]+$/;
 const DB_NAME = 'flower-shop-photos';
 const STORE_NAME = 'files';
 
-export type PhotoOwnerKind = 'client' | 'order' | 'purchase';
+export type PhotoOwnerKind = 'client' | 'order' | 'purchase' | 'inventory';
 
 export type PhotoErrorCode = 'invalidType' | 'tooLarge' | 'readFailed' | 'invalidImage' | 'saveFailed';
 

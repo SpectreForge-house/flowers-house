@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
-title Stop Flower's House CRM
+title Stop Flower's House
 color 0C
 
 echo ========================================
-echo    Stopping Flower's House CRM...
+echo    Stopping Flower's House...
 echo ========================================
 echo.
 
@@ -19,9 +19,9 @@ for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass
 
 echo.
 if "!stopped!"=="0" (
-    echo No Flower's House CRM server was running.
+    echo No Flower's House server was running.
 ) else (
-    echo Flower's House CRM has been stopped successfully.
+    echo Flower's House has been stopped successfully.
 )
 
 echo.

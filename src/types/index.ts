@@ -1,5 +1,8 @@
 export type OrderStatus = 'new' | 'confirmed' | 'preparing' | 'ready' | 'out_for_delivery' | 'completed' | 'cancelled';
 
+/** Delivery orders create a delivery record; in-store sales do not. */
+export type OrderType = 'delivery' | 'in_store';
+
 export type UserRole = 'owner' | 'manager' | 'staff';
 
 export type InviteRole = 'manager' | 'staff';
@@ -8,6 +11,8 @@ export interface UserProfile {
   id: string;
   shopId: string;
   displayName: string | null;
+  /** Last nickname change; used to enforce the 3-day cooldown. */
+  displayNameUpdatedAt: string | null;
   role: UserRole;
   language: string;
   createdAt: string;
@@ -90,6 +95,10 @@ export interface InventoryItem {
   unit: Unit;
   capacity?: number;
   capacityUnit?: 'L' | 'ml';
+  supplier?: string;
+  supplierSku?: string;
+  packNote?: string;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -130,6 +139,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  /** Optional for legacy records; missing means delivery. */
+  orderType?: OrderType;
   customerId: string;
   customerName: string;
   customerPhone: string;
@@ -162,6 +173,41 @@ export interface ClientPurchase {
   price: number;
   /** Purchase date, 'YYYY-MM-DD' (editable so old purchases can be added). */
   date: string;
+  /** Optional delivery address for this particular bouquet. */
+  deliveryAddress?: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FinanceEntryType = 'income' | 'expense';
+
+/** Predefined expense buckets; custom categories are stored as `other` + label. */
+export type ExpenseCategory =
+  | 'purchase'
+  | 'salary'
+  | 'rent'
+  | 'taxes'
+  | 'utilities'
+  | 'packaging'
+  | 'other';
+
+/**
+ * One money movement of the owner's daily bookkeeping: the revenue from the
+ * cash register or a single expense. Kept separate from orders on purpose -
+ * the daily revenue is typed in manually from the fiscal report and must not
+ * be derived from order totals.
+ */
+export interface FinanceEntry {
+  id: string;
+  type: FinanceEntryType;
+  /** Local calendar date, 'YYYY-MM-DD'. */
+  date: string;
+  amount: number;
+  /** Expense category; ignored for income. */
+  category?: ExpenseCategory;
+  /** Free text for a self-added category (category === 'other'). */
+  categoryLabel?: string;
   note?: string;
   createdAt: string;
   updatedAt: string;

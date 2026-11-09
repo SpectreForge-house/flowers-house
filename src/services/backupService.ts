@@ -25,6 +25,7 @@ export interface AutoBackupSettings {
 }
 
 const BACKUP_SETTINGS_KEY = 'flower-shop-backup-settings';
+const BACKUP_WARNING_DISMISSED_KEY = 'flower-shop-backup-warning-dismissed';
 const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BACKUP_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -62,6 +63,37 @@ export function saveAutoBackupSettings(patch: Partial<AutoBackupSettings>): Auto
   const next = { ...getAutoBackupSettings(), ...patch };
   localStorage.setItem(BACKUP_SETTINGS_KEY, JSON.stringify(next));
   return next;
+}
+
+/** The user hid the stale-backup banner on the Home page. */
+export function isBackupWarningDismissed(): boolean {
+  try {
+    return localStorage.getItem(BACKUP_WARNING_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function dismissBackupWarning(): void {
+  try {
+    localStorage.setItem(BACKUP_WARNING_DISMISSED_KEY, 'true');
+  } catch {
+    // Storage can be unavailable in private mode; the banner simply stays visible.
+  }
+}
+
+function clearBackupWarningDismissed(): void {
+  try {
+    localStorage.removeItem(BACKUP_WARNING_DISMISSED_KEY);
+  } catch {
+    // Nothing to do - the next stale warning is harmless.
+  }
+}
+
+/** Records a successful backup (automatic or manual) and resets the Home warning. */
+export function markBackupCompleted(): void {
+  saveAutoBackupSettings({ lastBackupAt: Date.now() });
+  clearBackupWarningDismissed();
 }
 
 /** The backup bridge only exists inside the Electron window. */
@@ -106,7 +138,7 @@ export async function runBackupNow(): Promise<string> {
   const backup = await createBackup({ includePhotos: false });
   const dirName = await bridge.write(folderPath, JSON.stringify(backup), keepCount);
 
-  saveAutoBackupSettings({ lastBackupAt: Date.now() });
+  markBackupCompleted();
   recordHistory('backup_created', 'backup', dirName, `Automatic backup created: ${dirName}`);
   return dirName;
 }

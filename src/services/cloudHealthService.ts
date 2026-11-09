@@ -10,7 +10,10 @@ export type CloudHealthCheckId =
   | 'profileFields'
   | 'photoBucket'
   | 'rlsHardening'
-  | 'teamInvites';
+  | 'teamInvites'
+  | 'inventoryFields'
+  | 'financeTable'
+  | 'schemaVersion';
 
 export interface CloudHealthCheck {
   id: CloudHealthCheckId;
@@ -150,6 +153,28 @@ async function probeRlsHelpers(): Promise<{ missing: string[]; message?: string 
   return { missing, message };
 }
 
+async function probeSchemaVersion(): Promise<{ missing: string[]; message?: string }> {
+  const { data, error } = await supabase!
+    .from('app_meta')
+    .select('value')
+    .eq('key', 'schema_version')
+    .maybeSingle();
+
+  if (error) {
+    return { missing: ['app_meta.schema_version'], message: describeError(error) };
+  }
+
+  const version = Number(data?.value);
+  if (!data || !Number.isFinite(version) || version < 13) {
+    return {
+      missing: ['app_meta.schema_version'],
+      message: data ? `Schema version ${data.value}, expected 13` : 'Schema version is not set',
+    };
+  }
+
+  return { missing: [] };
+}
+
 async function probeTeamInvites(): Promise<{ missing: string[]; message?: string }> {
   const [table, accept] = await Promise.all([
     probeTable('shop_invites'),
@@ -175,7 +200,7 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
   await profileReady;
   const shopId = await getShopId();
 
-  const [base, parity, customerDates, settingsParity, profileFields, photoBucket, rlsHardening, teamInvites] = await Promise.all([
+  const [base, parity, customerDates, settingsParity, profileFields, photoBucket, rlsHardening, teamInvites, inventoryFields, financeTable, schemaVersion] = await Promise.all([
     missingTables(BASE_TABLES),
     missingTables(PARITY_TABLES),
     missingColumns('customers', ['important_dates']),
@@ -184,6 +209,9 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
     probePhotoBucket(shopId),
     probeRlsHelpers(),
     probeTeamInvites(),
+    missingColumns('inventory_items', ['supplier', 'supplier_sku', 'pack_note', 'notes']),
+    missingTables(['finance_entries']),
+    probeSchemaVersion(),
   ]);
 
   const checks = [
@@ -195,6 +223,9 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
     photoBucket,
     tableCheck('rlsHardening', '007', rlsHardening),
     tableCheck('teamInvites', '008', teamInvites),
+    tableCheck('inventoryFields', '012', inventoryFields),
+    tableCheck('financeTable', '014', financeTable),
+    tableCheck('schemaVersion', '013', schemaVersion),
   ];
 
   return {

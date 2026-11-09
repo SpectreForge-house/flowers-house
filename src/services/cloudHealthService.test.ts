@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   columnErrors: new Map<string, string>(),
   rpcErrors: new Map<string, { message: string; code?: string }>(),
   bucketError: null as { message: string; code?: string } | null,
+  schemaVersion: '13',
 }));
 
 vi.mock('../lib/supabase', () => ({
@@ -37,6 +38,7 @@ beforeEach(() => {
   mocks.columnErrors.clear();
   mocks.rpcErrors.clear();
   mocks.bucketError = null;
+  mocks.schemaVersion = '13';
   mocks.rpc.mockImplementation(async (fn: string) => ({
     data: fn === 'current_shop_id' ? 'shop-1' : 'owner',
     error: mocks.rpcErrors.get(fn) ?? null,
@@ -54,6 +56,14 @@ beforeEach(() => {
             ? { message: mocks.columnErrors.get(columnKey)! }
             : null),
         }),
+        eq: (eqColumn: string, eqValue: unknown) => ({
+          maybeSingle: async () => ({
+            data: table === 'app_meta' && eqColumn === 'key' && eqValue === 'schema_version'
+              ? { value: mocks.schemaVersion }
+              : null,
+            error: tableError,
+          }),
+        }),
       };
     },
   }));
@@ -65,7 +75,7 @@ describe('checkCloudHealth', () => {
     const report = await checkCloudHealth();
 
     expect(report.ok).toBe(true);
-    expect(report.checks).toHaveLength(8);
+    expect(report.checks).toHaveLength(11);
     expect(report.checks.every(check => check.ok)).toBe(true);
   });
 
@@ -120,5 +130,29 @@ describe('checkCloudHealth', () => {
     expect(team?.missing).toContain('shop_invites');
     expect(team?.missing).toContain('accept_shop_invite');
     expect(team?.migration).toBe('008');
+  });
+
+  it('reports missing inventory supplier columns from migration 012', async () => {
+    mocks.columnErrors.set('inventory_items.supplier', 'column does not exist');
+
+    const report = await checkCloudHealth();
+    const fields = report.checks.find(check => check.id === 'inventoryFields');
+
+    expect(report.ok).toBe(false);
+    expect(fields?.ok).toBe(false);
+    expect(fields?.missing).toContain('inventory_items.supplier');
+    expect(fields?.migration).toBe('012');
+  });
+
+  it('reports an outdated schema version from 013', async () => {
+    mocks.schemaVersion = '10';
+
+    const report = await checkCloudHealth();
+    const schema = report.checks.find(check => check.id === 'schemaVersion');
+
+    expect(report.ok).toBe(false);
+    expect(schema?.ok).toBe(false);
+    expect(schema?.missing).toContain('app_meta.schema_version');
+    expect(schema?.migration).toBe('013');
   });
 });

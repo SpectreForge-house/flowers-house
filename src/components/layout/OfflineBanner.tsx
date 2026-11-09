@@ -22,7 +22,10 @@ export function OfflineBanner() {
   if (!offline || !cloudMode) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[70] flex items-center justify-center gap-2 bg-status-warning px-4 py-2 text-sm text-accent-text shadow-lg">
+    <div
+      className="fixed top-0 left-0 right-0 z-[70] flex items-center justify-center gap-2 bg-status-warning px-4 py-2 text-sm text-accent-text shadow-lg"
+      style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }}
+    >
       <CloudOff size={16} />
       <span>{t.cloudCustomers.offlineWarning}</span>
     </div>

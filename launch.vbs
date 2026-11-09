@@ -1,4 +1,4 @@
-' Flower's House CRM - Desktop Launcher
+' Flower's House - Desktop Launcher
 ' Starts Electron which manages the server lifecycle
 
 Dim WshShell, fso
@@ -10,7 +10,7 @@ projectDir = fso.GetParentFolderName(WScript.ScriptFullName)
 
 ' Check if project directory exists
 If Not fso.FolderExists(projectDir) Then
-    MsgBox "Project directory not found:" & vbCrLf & projectDir, vbCritical, "Flower's House CRM"
+    MsgBox "Project directory not found:" & vbCrLf & projectDir, vbCritical, "Flower's House"
     WScript.Quit
 End If
 
@@ -18,7 +18,7 @@ End If
 Dim electronCmd
 electronCmd = projectDir & "\node_modules\.bin\electron.cmd"
 If Not fso.FileExists(electronCmd) Then
-    MsgBox "Electron not found. Please run: npm install" & vbCrLf & "in the project directory.", vbCritical, "Flower's House CRM"
+    MsgBox "Electron not found. Please run: npm install" & vbCrLf & "in the project directory.", vbCritical, "Flower's House"
     WScript.Quit
 End If
 

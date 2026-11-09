@@ -1,5 +1,5 @@
 @echo off
-title Flower's House CRM
+title Flower's House
 color 0A
 
 echo ========================================
@@ -25,7 +25,7 @@ if not exist "node_modules\electron" (
     exit /b 1
 )
 
-echo Starting Flower's House CRM...
+echo Starting Flower's House...
 echo.
 
 call "node_modules\.bin\electron.cmd" .

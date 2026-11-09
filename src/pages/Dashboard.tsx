@@ -1,23 +1,33 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart, DollarSign, Clock, Truck, AlertTriangle, ArrowRight, Bell, Cake, X } from 'lucide-react';
+import { ShoppingCart, DollarSign, Clock, Truck, AlertTriangle, ArrowRight, Bell, Cake, X, TrendingUp, TrendingDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
+import { bg as bgLocale, enUS, ru as ruLocale } from 'date-fns/locale';
 import { useInventory, useOrders, useDeliveries, useCustomers, useSettings } from '../hooks/useStore';
 import { getDailyRevenue } from '../services/statisticsService';
 import { getUpcomingClientDates, daysLeftText } from '../services/clientDatesService';
 import { generateReminders } from '../services/reminderService';
 import { useReminderState } from '../hooks/useReminderState';
-import { isBackupStale } from '../services/backupService';
+import { dismissBackupWarning, isBackupStale, isBackupWarningDismissed } from '../services/backupService';
 import { formatCurrency, getStatusColor, getDeliveryStatusColor } from '../utils/formatters';
 import { CustomerAvatar } from '../components/customers/CustomerAvatar';
 import { usePermissions } from '../contexts/PermissionsContext';
-import { useLanguage } from '../i18n';
+import { useLanguage, type Language } from '../i18n';
+
+const DATE_LOCALES = { en: enUS, ru: ruLocale, bg: bgLocale };
+const DATE_PATTERNS: Record<Language, string> = {
+  en: 'EEEE, MMMM d, yyyy',
+  ru: 'EEEE, d MMMM yyyy',
+  bg: 'EEEE, d MMMM yyyy',
+};
 
 export function Dashboard() {
-  const { t } = useLanguage();
-  const { can } = usePermissions();
-  const canViewFinancials = can('viewFinancials');
+  const { t, language } = useLanguage();
+  const { can, role } = usePermissions();
+  // Revenue is owner-only, even though managers have viewFinancials.
+  const canViewRevenue = role === 'owner';
+  const canManageFinance = can('manageFinance');
   const canBackup = can('backupRestore');
   const navigate = useNavigate();
   const { inventory, reservations } = useInventory();
@@ -30,6 +40,12 @@ export function Dashboard() {
   const [reminders, setReminders] = useState<ReturnType<typeof generateReminders>>([]);
   // Visible when no backup was made for more than 7 days (or never).
   const [backupStale] = useState(() => isBackupStale());
+  const [backupWarningDismissed, setBackupWarningDismissed] = useState(() => isBackupWarningDismissed());
+
+  const handleDismissBackupWarning = () => {
+    dismissBackupWarning();
+    setBackupWarningDismissed(true);
+  };
 
   const lowStockItems = useMemo(
     () => inventory.filter(i => i.quantity <= i.minStock),
@@ -37,11 +53,15 @@ export function Dashboard() {
   );
 
   useEffect(() => {
-    setRevenueData(getDailyRevenue(7, orders));
+    if (canViewRevenue) {
+      setRevenueData(getDailyRevenue(7, orders));
+    } else {
+      setRevenueData([]);
+    }
     setReminders(
       generateReminders(inventory, orders, deliveries, reservations, reminderReadIds, reminderDismissedKeys).slice(0, 5),
     );
-  }, [inventory, orders, deliveries, reservations, reminderReadIds, reminderDismissedKeys]);
+  }, [inventory, orders, deliveries, reservations, reminderReadIds, reminderDismissedKeys, canViewRevenue]);
 
   const today = new Date().toISOString().split('T')[0];
   const todayOrders = orders.filter(o => o.createdAt.startsWith(today) || o.deliveryDate === today);
@@ -62,7 +82,7 @@ export function Dashboard() {
 
   const stats = [
     { label: t.dashboard.ordersToday, value: todayOrders.length, icon: ShoppingCart, color: 'text-status-info' },
-    ...(canViewFinancials
+    ...(canViewRevenue
       ? [{ label: t.dashboard.revenueToday, value: formatCurrency(todayRevenue), icon: DollarSign, color: 'text-status-success' }]
       : []),
     { label: t.dashboard.waitingToPrepare, value: waitingOrders.length, icon: Clock, color: 'text-status-warning' },
@@ -79,18 +99,29 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {canBackup && backupStale && (
+      {canBackup && backupStale && !backupWarningDismissed && (
         <div className="flex items-center gap-3 bg-surface border border-status-warning rounded-lg p-3">
           <AlertTriangle size={20} className="text-status-warning shrink-0" />
           <p className="text-sm text-text-primary flex-1">{t.autoBackup.staleWarning}</p>
           <Link to="/settings" className="text-sm text-accent-green-light hover:underline whitespace-nowrap">
             {t.autoBackup.openSettings}
           </Link>
+          <button
+            type="button"
+            onClick={handleDismissBackupWarning}
+            title={t.common.close}
+            aria-label={t.common.close}
+            className="p-1 -m-1 text-text-muted hover:text-text-primary hover:bg-hover rounded transition-colors shrink-0"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text-primary">{t.dashboard.title}</h1>
-        <p className="text-text-muted">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
+        <p className="text-text-muted">
+          {format(new Date(), DATE_PATTERNS[language], { locale: DATE_LOCALES[language] })}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -106,6 +137,37 @@ export function Dashboard() {
           </div>
         ))}
       </div>
+
+      {canManageFinance && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link
+            to="/finance?action=income"
+            className="flex items-center gap-3 rounded-lg border border-status-success/40 bg-status-success/10 p-4 hover:bg-status-success/15 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-full bg-status-success/20 flex items-center justify-center shrink-0">
+              <TrendingUp size={20} className="text-status-success" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-text-primary">{t.finance.addIncomeShort}</p>
+              <p className="text-sm text-text-secondary">{t.finance.incomeHint}</p>
+            </div>
+            <ArrowRight size={18} className="text-status-success ml-auto shrink-0" />
+          </Link>
+          <Link
+            to="/finance?action=expense"
+            className="flex items-center gap-3 rounded-lg border border-status-danger/40 bg-status-danger/10 p-4 hover:bg-status-danger/15 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-full bg-status-danger/20 flex items-center justify-center shrink-0">
+              <TrendingDown size={20} className="text-status-danger" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-text-primary">{t.finance.addExpense}</p>
+              <p className="text-sm text-text-secondary">{t.finance.expenseHint}</p>
+            </div>
+            <ArrowRight size={18} className="text-status-danger ml-auto shrink-0" />
+          </Link>
+        </div>
+      )}
 
       {upcomingClientDates.length > 0 && (
         <div className="bg-card rounded-lg border border-border p-4">
@@ -150,7 +212,7 @@ export function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {canViewFinancials && (
+        {canViewRevenue && (
           <div className="lg:col-span-2 bg-card rounded-lg border border-border p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text-primary">{t.dashboard.revenueChart}</h2>
@@ -172,7 +234,7 @@ export function Dashboard() {
           </div>
         )}
 
-        <div className={`${canViewFinancials ? '' : 'lg:col-span-3'} bg-card rounded-lg border border-border p-4`}>
+        <div className={`${canViewRevenue ? '' : 'lg:col-span-3'} bg-card rounded-lg border border-border p-4`}>
           <h2 className="text-lg font-semibold text-text-primary mb-4">{t.dashboard.todayDeliveries}</h2>
           <div className="space-y-3">
             {todayDeliveries.length === 0 ? (

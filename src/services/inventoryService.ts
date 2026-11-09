@@ -1,8 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { InventoryItem, InventoryTransaction, Bouquet, Order } from '../types';
-import { getInventory, saveInventory, getTransactions, addTransaction, getReservations } from './storage';
+import { getInventory, saveInventory, getTransactions, addTransaction, getReservations, getOrders, saveOrders } from './storage';
 import { InventoryStorageAdapter } from './inventoryStorageAdapter';
-import { deductInventoryForOrderRpc } from './supabaseInventoryStorage';
+import { completeReservationsForOrder } from './reservationService';
+import { adjustInventoryStockRpc, deductInventoryForOrderRpc } from './supabaseInventoryStorage';
 
 export type InventoryMessage = { key: string; params?: Record<string, string | number> };
 
@@ -85,7 +86,9 @@ export async function deductInventoryForOrder(order: Order, bouquets: Bouquet[],
         }
 
         const requiredQty = bouquetItem.quantity;
-        const reserved = getReservations().filter(r => r.inventoryItemId === invItem.id && r.status === 'active').reduce((sum, r) => sum + r.quantity, 0);
+        const reserved = getReservations()
+          .filter(r => r.inventoryItemId === invItem.id && r.status === 'active' && r.orderId !== order.id)
+          .reduce((sum, r) => sum + r.quantity, 0);
         const available = invItem.quantity - reserved;
         if (available < requiredQty) {
           return { success: false, message: msg('orders.insufficientStock', { item: invItem.name, need: requiredQty, have: available }) };
@@ -110,31 +113,41 @@ export async function deductInventoryForOrder(order: Order, bouquets: Bouquet[],
   saveInventory(inventory);
   transactions.forEach(t => addTransaction(t));
 
+  const orders = getOrders();
+  const storedOrder = orders.find(o => o.id === order.id);
+  if (storedOrder) {
+    storedOrder.inventoryDeducted = true;
+    storedOrder.updatedAt = new Date().toISOString();
+    saveOrders(orders);
+  }
+  order.inventoryDeducted = true;
+
+  await completeReservationsForOrder(order.id);
+
   return { success: true, message: msg('inventory.deductedSuccessfully') };
 }
 
 export async function addStock(itemId: string, quantity: number, reason: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
   const inventory = adapter ? await adapter.getInventory() : getInventory();
   const item = inventory.find(i => i.id === itemId);
-  
+
   if (!item) {
     return { success: false, message: msg('inventory.itemNotFound') };
   }
 
-  item.quantity += quantity;
-  item.updatedAt = new Date().toISOString();
+  if (quantity <= 0) {
+    return { success: false, message: msg('inventory.quantityRequired') };
+  }
 
   if (adapter) {
-    await adapter.updateInventoryItem(item);
-    await adapter.addTransaction({
-      id: uuidv4(),
-      inventoryItemId: itemId,
-      type: 'add',
-      quantity,
-      reason,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      await adjustInventoryStockRpc({ itemId, quantity, type: 'add', reason });
+    } catch (error) {
+      return { success: false, message: msg('inventory.stockUpdateFailed', { error: (error as Error).message }) };
+    }
   } else {
+    item.quantity += quantity;
+    item.updatedAt = new Date().toISOString();
     saveInventory(inventory);
     addTransaction({
       id: uuidv4(),
@@ -152,29 +165,28 @@ export async function addStock(itemId: string, quantity: number, reason: string,
 export async function removeStock(itemId: string, quantity: number, reason: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {
   const inventory = adapter ? await adapter.getInventory() : getInventory();
   const item = inventory.find(i => i.id === itemId);
-  
+
   if (!item) {
     return { success: false, message: msg('inventory.itemNotFound') };
+  }
+
+  if (quantity <= 0) {
+    return { success: false, message: msg('inventory.quantityRequired') };
   }
 
   if (item.quantity < quantity) {
     return { success: false, message: msg('inventory.insufficientStock', { have: item.quantity, need: quantity }) };
   }
 
-  item.quantity -= quantity;
-  item.updatedAt = new Date().toISOString();
-
   if (adapter) {
-    await adapter.updateInventoryItem(item);
-    await adapter.addTransaction({
-      id: uuidv4(),
-      inventoryItemId: itemId,
-      type: 'remove',
-      quantity,
-      reason,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      await adjustInventoryStockRpc({ itemId, quantity, type: 'remove', reason });
+    } catch (error) {
+      return { success: false, message: msg('inventory.stockUpdateFailed', { error: (error as Error).message }) };
+    }
   } else {
+    item.quantity -= quantity;
+    item.updatedAt = new Date().toISOString();
     saveInventory(inventory);
     addTransaction({
       id: uuidv4(),
@@ -225,21 +237,15 @@ export async function recordWaste(itemId: string, quantity: number, reason: stri
     return { success: false, message: msg('inventory.insufficientStock', { have: item.quantity, need: quantity }) };
   }
 
-  item.quantity -= quantity;
-  item.updatedAt = new Date().toISOString();
-
   if (adapter) {
-    await adapter.updateInventoryItem(item);
-    await adapter.addTransaction({
-      id: uuidv4(),
-      inventoryItemId: itemId,
-      type: 'waste',
-      quantity,
-      reason,
-      comment,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      await adjustInventoryStockRpc({ itemId, quantity, type: 'waste', reason, comment });
+    } catch (error) {
+      return { success: false, message: msg('inventory.stockUpdateFailed', { error: (error as Error).message }) };
+    }
   } else {
+    item.quantity -= quantity;
+    item.updatedAt = new Date().toISOString();
     saveInventory(inventory);
     addTransaction({
       id: uuidv4(),

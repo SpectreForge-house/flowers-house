@@ -1,19 +1,31 @@
 {
-  "name": "Flower's House CRM",
+  "name": "Flower's House",
   "short_name": "Flower's House",
   "description": "Flower shop inventory, orders, deliveries and customer management",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#2d5a3d",
+  "background_color": "#2D5A3D",
+  "theme_color": "#2D5A3D",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "./favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

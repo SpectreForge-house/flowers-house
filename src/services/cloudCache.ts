@@ -3,6 +3,7 @@ import {
   ClientPurchase,
   Customer,
   Delivery,
+  FinanceEntry,
   HistoryRecord,
   InventoryItem,
   InventoryReservation,
@@ -25,6 +26,7 @@ interface CloudCacheData {
   orders: Order[];
   deliveries: Delivery[];
   purchases: ClientPurchase[];
+  finance: FinanceEntry[];
   settings: Settings;
   history: HistoryRecord[];
   readReminders: string[];

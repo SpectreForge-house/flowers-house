@@ -2,9 +2,14 @@ import { supabase } from '../lib/supabase';
 import { clearShopIdCache } from './supabaseStorage';
 import { getCurrentUserId } from './shopContext';
 import { setStorageMode } from './storageAdapter';
+import { clearPendingInviteError } from './pendingInvite';
 import { InviteRole, ShopInvite, ShopMember, UserProfile, UserRole } from '../types';
 
 const PENDING_INVITE_KEY = 'flower-shop-pending-invite';
+
+export function normalizeInviteToken(token: string): string {
+  return token.toLowerCase().replace(/[^0-9a-f]/g, '');
+}
 
 export interface InviteResult {
   ok: boolean;
@@ -35,7 +40,13 @@ interface RawMember {
 
 export function setPendingInviteToken(token: string): void {
   try {
-    localStorage.setItem(PENDING_INVITE_KEY, token.trim());
+    const normalized = normalizeInviteToken(token);
+    if (!normalized) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      return;
+    }
+    localStorage.setItem(PENDING_INVITE_KEY, normalized);
+    clearPendingInviteError();
   } catch {
     // localStorage can be unavailable in hardened browser contexts.
   }
@@ -44,7 +55,7 @@ export function setPendingInviteToken(token: string): void {
 export function getPendingInviteToken(): string | null {
   try {
     const token = localStorage.getItem(PENDING_INVITE_KEY);
-    return token?.trim() || null;
+    return token ? normalizeInviteToken(token) || null : null;
   } catch {
     return null;
   }
@@ -82,18 +93,31 @@ function mapMember(row: RawMember): ShopMember {
   };
 }
 
+export const DISPLAY_NAME_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+
 export async function getMyProfile(): Promise<UserProfile | null> {
   if (!supabase) return null;
 
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
-  const { data, error } = await supabase
+  const baseColumns = 'id, shop_id, display_name, role, language, created_at';
+  let result = await supabase
     .from('user_profiles')
-    .select('id, shop_id, display_name, role, language, created_at')
+    .select(`${baseColumns}, display_name_updated_at`)
     .eq('id', userId)
     .maybeSingle();
 
+  // Keep older databases working until migration 011 is applied.
+  if (result.error && /display_name_updated_at/i.test(result.error.message)) {
+    result = await supabase
+      .from('user_profiles')
+      .select(baseColumns)
+      .eq('id', userId)
+      .maybeSingle();
+  }
+
+  const { data, error } = result;
   if (error) {
     console.error('[Team] Failed to load profile:', error.message);
     return null;
@@ -104,10 +128,28 @@ export async function getMyProfile(): Promise<UserProfile | null> {
     id: data.id as string,
     shopId: data.shop_id as string,
     displayName: (data.display_name as string | null) ?? null,
+    displayNameUpdatedAt: (data.display_name_updated_at as string | null | undefined) ?? null,
     role: data.role as UserRole,
     language: (data.language as string) || 'en',
     createdAt: data.created_at as string,
   };
+}
+
+export function getDisplayNameCooldownEnd(updatedAt: string | null): Date | null {
+  if (!updatedAt) return null;
+  const time = new Date(updatedAt).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time + DISPLAY_NAME_COOLDOWN_MS);
+}
+
+export async function updateMyDisplayName(displayName: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { error } = await supabase.rpc('update_my_profile', {
+    p_display_name: displayName.trim(),
+  });
+
+  if (error) throw new Error(error.message);
 }
 
 export async function listShopMembers(): Promise<ShopMember[]> {
@@ -169,7 +211,7 @@ export async function acceptShopInvite(token: string): Promise<InviteResult> {
   if (!supabase) return { ok: false, error: 'not_configured' };
 
   const { data, error } = await supabase.rpc('accept_shop_invite', {
-    p_token: token.trim(),
+    p_token: normalizeInviteToken(token),
   });
 
   if (error) return { ok: false, error: error.message };
@@ -180,6 +222,7 @@ export async function acceptShopInvite(token: string): Promise<InviteResult> {
   }
 
   clearPendingInviteToken();
+  clearPendingInviteError();
   clearShopIdCache();
   setStorageMode('supabase');
   return { ok: true, shopId: payload.shop_id };
@@ -194,6 +237,37 @@ export async function updateMemberRole(memberId: string, role: UserRole): Promis
     .eq('id', memberId);
 
   if (error) throw new Error(error.message);
+}
+
+export async function transferOwnership(
+  memberId: string,
+  previousRole: UserRole,
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+  if (userId === memberId) throw new Error('Cannot transfer ownership to yourself');
+
+  const { error: promoteError } = await supabase
+    .from('user_profiles')
+    .update({ role: 'owner' })
+    .eq('id', memberId);
+
+  if (promoteError) throw new Error(promoteError.message);
+
+  const { error: demoteError } = await supabase
+    .from('user_profiles')
+    .update({ role: 'manager' })
+    .eq('id', userId);
+
+  if (demoteError) {
+    await supabase
+      .from('user_profiles')
+      .update({ role: previousRole })
+      .eq('id', memberId);
+    throw new Error(demoteError.message);
+  }
 }
 
 export async function removeMember(memberId: string): Promise<void> {

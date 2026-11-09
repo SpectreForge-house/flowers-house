@@ -1,8 +1,15 @@
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
+
 export default defineConfig({
+  // Single source of truth for the version shown in the sidebar and mobile menu.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   // Relative asset URLs keep the same build working on the web and in Electron,
   // where the app:// protocol serves dist/.
   base: './',
@@ -11,7 +18,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icons/*.png'],
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2}'],

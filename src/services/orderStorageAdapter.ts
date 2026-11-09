@@ -1,8 +1,8 @@
-import { Order, OrderItem, Delivery, OrderStatus } from '../types';
+import { Order, Delivery, InventoryReservation } from '../types';
 
 export interface OrderStorageAdapter {
   getOrders(): Order[] | Promise<Order[]>;
-  addOrder(order: Order): void | Promise<void>;
+  addOrder(order: Order, delivery?: Delivery, reservations?: InventoryReservation[]): void | Promise<void>;
   updateOrder(order: Order): void | Promise<void>;
   deleteOrder(id: string): void | Promise<void>;
 

@@ -467,8 +467,8 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 600,
-    title: "Flower's House CRM",
-    icon: isDev ? path.join(projectDir, 'public', 'favicon.svg') : undefined,
+    title: "Flower's House",
+    icon: isDev ? path.join(projectDir, 'public', 'favicon.png') : undefined,
     webPreferences: {
       // Must live inside webPreferences - at the top level Electron silently
       // ignores it and the preload (photo + backup bridges) never loads.

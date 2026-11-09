@@ -1,18 +1,35 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, Filter, AlertTriangle, Edit, Trash2, History, ArrowUp, ArrowDown } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  Search,
+  Plus,
+  Filter,
+  AlertTriangle,
+  Edit,
+  Trash2,
+  History,
+  ArrowUp,
+  ArrowDown,
+  ImageOff,
+} from 'lucide-react';
 import { InventoryItem, InventoryTransaction } from '../types';
 import { useInventory, getHistoryAdapter } from '../hooks/useStore';
 import { addStock, removeStock, getItemTransactions } from '../services/inventoryService';
 import { InventoryStorageAdapter } from '../services/inventoryStorageAdapter';
+import { getStorageMode } from '../services/storageAdapter';
 import { recordHistory } from '../services/historyService';
+import { listPhotos, photoOwnerKey, removePhoto, savePhoto } from '../services/photoStorage';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { photoErrorMessage } from '../utils/photoErrors';
 import { showToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
 import { DiscardChangesDialog } from '../components/ui/DiscardChangesDialog';
+import { PhotoGalleryPicker } from '../components/ui/PhotoGalleryPicker';
+import { PhotoLightbox } from '../components/ui/PhotoLightbox';
 import { useCloseGuard } from '../hooks/useCloseGuard';
+import { usePhotoUrl, useOwnerPhotos } from '../hooks/usePhotoUrl';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useLanguage } from '../i18n';
 
@@ -24,7 +41,6 @@ export function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showLowStock, setShowLowStock] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [showAddStock, setShowAddStock] = useState<InventoryItem | null>(null);
   const [showRemoveStock, setShowRemoveStock] = useState<InventoryItem | null>(null);
   const [showHistory, setShowHistory] = useState<InventoryItem | null>(null);
@@ -32,6 +48,7 @@ export function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [photoVersion, setPhotoVersion] = useState(0);
 
   const categories = useMemo(() => {
     const cats = new Set(inventory.map(i => i.category));
@@ -59,7 +76,9 @@ export function InventoryPage() {
       result = result.filter(i => 
         i.name.toLowerCase().includes(query) ||
         i.category.toLowerCase().includes(query) ||
-        getCategoryLabel(i.category).toLowerCase().includes(query)
+        getCategoryLabel(i.category).toLowerCase().includes(query) ||
+        (i.supplier || '').toLowerCase().includes(query) ||
+        (i.supplierSku || '').toLowerCase().includes(query)
       );
     }
     
@@ -78,7 +97,7 @@ export function InventoryPage() {
 
   const handleAddStock = async (itemId: string, quantity: number, reason: string) => {
     try {
-      const adapter = getAdapter();
+      const adapter = getStorageMode() === 'supabase' ? getAdapter() : undefined;
       const result = await addStock(itemId, quantity, reason, adapter);
       if (result.success) {
         await refresh();
@@ -96,7 +115,7 @@ export function InventoryPage() {
 
   const handleRemoveStock = async (itemId: string, quantity: number, reason: string) => {
     try {
-      const adapter = getAdapter();
+      const adapter = getStorageMode() === 'supabase' ? getAdapter() : undefined;
       const result = await removeStock(itemId, quantity, reason, adapter);
       if (result.success) {
         await refresh();
@@ -221,11 +240,14 @@ export function InventoryPage() {
                 return (
                   <tr key={item.id} className={`border-b border-border hover:bg-surface ${isLow ? 'bg-status-danger/5' : ''} ${deletingId === item.id ? 'animate-delete-row' : ''}`}>
                     <td className="px-4 py-3">
-                      <div>
-                        <span className="text-text-primary font-medium">{item.name}</span>
-                        {item.color && (
-                          <span className="ml-2 text-text-muted text-sm">({item.color})</span>
-                        )}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <InventoryThumb key={`${item.id}-${photoVersion}`} item={item} />
+                        <div className="min-w-0">
+                          <span className="text-text-primary font-medium">{item.name}</span>
+                          {item.color && (
+                            <span className="ml-2 text-text-muted text-sm">({item.color})</span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-text-secondary">{getCategoryLabel(item.category)}</td>
@@ -322,9 +344,12 @@ export function InventoryPage() {
             return (
               <div key={item.id} className={`p-4 hover:bg-surface ${isLow ? 'bg-status-danger/5' : ''} ${deletingId === item.id ? 'animate-delete-row' : ''}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <span className="text-text-primary font-medium">{item.name}</span>
-                    {item.color && <span className="ml-2 text-text-muted text-sm">({item.color})</span>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <InventoryThumb key={`${item.id}-${photoVersion}`} item={item} />
+                    <div className="min-w-0">
+                      <span className="text-text-primary font-medium">{item.name}</span>
+                      {item.color && <span className="ml-2 text-text-muted text-sm">({item.color})</span>}
+                    </div>
                   </div>
                   {isLow ? (
                     <Badge variant="danger">
@@ -414,6 +439,7 @@ export function InventoryPage() {
           onClose={() => setEditingItem(null)}
           onSaved={async () => {
             await refresh();
+            setPhotoVersion(v => v + 1);
             setEditingItem(null);
           }}
           addItem={addItem}
@@ -441,6 +467,48 @@ export function InventoryPage() {
         variant="danger"
       />
     </div>
+  );
+}
+
+function InventoryThumb({ item }: { item: InventoryItem }) {
+  const { t } = useLanguage();
+  const photos = useOwnerPhotos(photoOwnerKey('inventory', item.id));
+  const [index, setIndex] = useState<number | null>(null);
+  const url = usePhotoUrl(photos[0]);
+
+  if (photos.length === 0) {
+    return (
+      <div className="w-9 h-9 shrink-0 rounded-lg border border-border bg-surface text-text-muted flex items-center justify-center">
+        <ImageOff size={15} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setIndex(0)}
+        aria-label={t.photos.photo}
+        className="w-9 h-9 shrink-0 rounded-lg border border-border bg-surface overflow-hidden hover:border-accent"
+      >
+        {url ? (
+          <img src={url} alt={t.photos.photo} className="w-full h-full object-cover" />
+        ) : (
+          <span className="w-full h-full flex items-center justify-center text-text-muted">
+            <ImageOff size={15} />
+          </span>
+        )}
+      </button>
+      {index !== null && (
+        <PhotoLightbox
+          photos={photos}
+          index={index}
+          onIndexChange={setIndex}
+          onClose={() => setIndex(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -613,9 +681,20 @@ function InventoryItemForm({
   const [purchasePrice, setPurchasePrice] = useState<string>(item?.purchasePrice != null ? String(item.purchasePrice) : '');
   const [sellingPrice, setSellingPrice] = useState<string>(item?.sellingPrice != null ? String(item.sellingPrice) : '');
   const [unit, setUnit] = useState<InventoryItem['unit']>(item?.unit || 'stems');
+  const [supplier, setSupplier] = useState(item?.supplier || '');
+  const [supplierSku, setSupplierSku] = useState(item?.supplierSku || '');
+  const [packNote, setPackNote] = useState(item?.packNote || '');
+  const [notes, setNotes] = useState(item?.notes || '');
   const [capacity, setCapacity] = useState<string>(item?.capacity != null ? String(item.capacity) : '');
   const [capacityUnit, setCapacityUnit] = useState<'L' | 'ml'>(item?.capacityUnit || 'L');
+  const [initialPhotos] = useState<string[]>(() => (
+    item?.id ? listPhotos(photoOwnerKey('inventory', item.id)) : []
+  ));
+  const [photos, setPhotos] = useState<string[]>(initialPhotos);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const createdRef = useRef<InventoryItem | null>(null);
 
   // Unsaved-changes detection: every field is compared with the values the
   // dialog was opened with, so an unchanged form closes without a prompt.
@@ -628,8 +707,14 @@ function InventoryItemForm({
     purchasePrice !== (item?.purchasePrice != null ? String(item.purchasePrice) : '') ||
     sellingPrice !== (item?.sellingPrice != null ? String(item.sellingPrice) : '') ||
     unit !== (item?.unit || 'stems') ||
+    supplier !== (item?.supplier || '') ||
+    supplierSku !== (item?.supplierSku || '') ||
+    packNote !== (item?.packNote || '') ||
+    notes !== (item?.notes || '') ||
     capacity !== (item?.capacity != null ? String(item.capacity) : '') ||
-    capacityUnit !== (item?.capacityUnit || 'L');
+    capacityUnit !== (item?.capacityUnit || 'L') ||
+    photos.join(',') !== initialPhotos.join(',') ||
+    pendingFiles.length > 0;
 
   const guard = useCloseGuard({ isDirty, onClose });
 
@@ -652,6 +737,20 @@ function InventoryItemForm({
     { value: 'decorations', label: t.categories.decorations },
     { value: 'other', label: t.categories.other },
   ];
+
+  const handleAddPhoto = (file: File) => {
+    setPendingFiles(prev => [...prev, file]);
+  };
+
+  const handleRemovePending = (index: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemovePhoto = (filename: string) => {
+    setPhotos(prev => prev.filter(f => f !== filename));
+    const owner = item ?? createdRef.current;
+    if (owner?.id) void removePhoto(photoOwnerKey('inventory', owner.id), filename);
+  };
 
   const handleSubmit = async () => {
     const errors: Record<string, boolean> = {};
@@ -695,39 +794,78 @@ function InventoryItemForm({
       purchasePrice: parseFloat(purchasePrice) || 0,
       sellingPrice: parseFloat(sellingPrice) || undefined,
       unit,
+      supplier: supplier.trim() || undefined,
+      supplierSku: supplierSku.trim() || undefined,
+      packNote: packNote.trim() || undefined,
+      notes: notes.trim() || undefined,
       ...(isContainerCategory ? { capacity: parseFloat(capacity) || 0, capacityUnit } : {}),
     };
 
+    setSaving(true);
     try {
       const historyAdapter = getHistoryAdapter();
-      if (item?.id) {
-        await updateItem({
-          ...item,
-          ...itemData,
-          updatedAt: new Date().toISOString(),
-        });
-        void recordHistory('inventory_received', 'inventory', item.id, `Inventory item "${name}" updated`, { category, quantity, minStock }, historyAdapter);
+      const savedItem: InventoryItem = item?.id
+        ? { ...item, ...itemData, updatedAt: new Date().toISOString() }
+        : createdRef.current
+        ? { ...createdRef.current, ...itemData, updatedAt: new Date().toISOString() }
+        : {
+            id: Math.random().toString(36).substring(7),
+            ...itemData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+      const wasSavedBefore = !!createdRef.current;
+      if (item?.id || createdRef.current) {
+        await updateItem(savedItem);
       } else {
-        const newItem: InventoryItem = {
-          id: Math.random().toString(36).substring(7),
-          ...itemData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await addItem(newItem);
-        void recordHistory('inventory_received', 'inventory', newItem.id, `Inventory item "${name}" created`, { category, quantity }, historyAdapter);
+        await addItem(savedItem);
+      }
+      createdRef.current = savedItem;
+
+      if (!wasSavedBefore) {
+        void recordHistory(
+          'inventory_received',
+          'inventory',
+          savedItem.id,
+          `Inventory item "${name}" ${item?.id ? 'updated' : 'created'}`,
+          { category, quantity, minStock },
+          historyAdapter,
+        );
+      }
+
+      const ownerKey = photoOwnerKey('inventory', savedItem.id);
+      const remaining = [...pendingFiles];
+      while (remaining.length > 0) {
+        const filename = await savePhoto(ownerKey, remaining[0]);
+        remaining.shift();
+        setPendingFiles([...remaining]);
+        setPhotos(prev => [...prev, filename]);
       }
 
       showToast('success', item?.id ? t.inventory.itemUpdated : t.inventory.itemCreated);
       onSaved();
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save item');
+      console.error('[InventoryItemForm] Failed to save item:', err);
+      showToast('error', photoErrorMessage(err, t));
+      setSaving(false);
     }
   };
 
   return (
     <Modal isOpen onClose={guard.requestClose} closeOnBackdrop={false} title={item?.id ? t.inventory.editItem : t.inventory.newItem}>
       <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">{t.inventory.photos}</label>
+          <PhotoGalleryPicker
+            photos={photos}
+            pendingFiles={pendingFiles}
+            onAdd={handleAddPhoto}
+            onRemovePhoto={handleRemovePhoto}
+            onRemovePending={handleRemovePending}
+          />
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-text-secondary mb-1">{t.inventory.name} *</label>
@@ -776,6 +914,46 @@ function InventoryItemForm({
               <option value="sheets">{t.inventory.sheets}</option>
               <option value="meters">{t.inventory.meters}</option>
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">{t.inventory.supplier}</label>
+            <input
+              type="text"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">{t.inventory.supplierSku}</label>
+            <input
+              type="text"
+              value={supplierSku}
+              onChange={(e) => setSupplierSku(e.target.value)}
+              className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">{t.inventory.packNote}</label>
+            <input
+              type="text"
+              value={packNote}
+              onChange={(e) => setPackNote(e.target.value)}
+              placeholder={t.inventory.packNotePlaceholder}
+              className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">{t.inventory.notes}</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary"
+            />
           </div>
         </div>
 
@@ -859,7 +1037,7 @@ function InventoryItemForm({
           <Button variant="secondary" onClick={guard.requestClose} className="flex-1">
             {t.common.cancel}
           </Button>
-          <Button onClick={handleSubmit} className="flex-1">
+          <Button onClick={handleSubmit} className="flex-1" disabled={saving}>
             {item?.id ? t.common.saveChanges : t.inventory.addItem}
           </Button>
         </div>

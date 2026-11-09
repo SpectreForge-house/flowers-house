@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useRef } from 'react';
 import * as storage from '../services/storage';
-import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, Settings, InventoryReservation, ClientPurchase } from '../types';
+import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, Settings, InventoryReservation, ClientPurchase, FinanceEntry } from '../types';
 import { CustomerStorageAdapter, getStorageMode } from '../services/storageAdapter';
 import { InventoryStorageAdapter } from '../services/inventoryStorageAdapter';
 import { BouquetStorageAdapter } from '../services/bouquetStorageAdapter';
@@ -13,8 +13,11 @@ import { HistoryStorageAdapter } from '../services/historyStorageAdapter';
 import { LocalHistoryAdapter } from '../services/localHistoryStorage';
 import { SupabaseHistoryAdapter } from '../services/supabaseHistoryStorage';
 import { isSupabaseAvailable, profileReady, onAuthChange } from '../services/authService';
+import { photoOwnerKey, removeOwnerPhotos } from '../services/photoStorage';
 import { PurchaseStorageAdapter } from '../services/purchaseStorageAdapter';
 import { SupabasePurchaseAdapter } from '../services/supabasePurchaseStorage';
+import { FinanceStorageAdapter } from '../services/financeStorageAdapter';
+import { SupabaseFinanceAdapter } from '../services/supabaseFinanceStorage';
 import { SettingsStorageAdapter } from '../services/settingsStorageAdapter';
 import { SupabaseSettingsAdapter } from '../services/supabaseSettingsStorage';
 import { ReminderStorageAdapter } from '../services/reminderStorageAdapter';
@@ -119,6 +122,19 @@ export function getPurchaseAdapter(): PurchaseStorageAdapter {
     updatePurchase: async (p) => storage.updatePurchase(p),
     deletePurchase: async (id) => storage.deletePurchase(id),
     deletePurchasesByCustomer: async (id) => storage.deletePurchasesByCustomer(id),
+  };
+}
+
+export function getFinanceAdapter(): FinanceStorageAdapter {
+  if (isCloudActive()) {
+    return guardCloudWrites(new SupabaseFinanceAdapter());
+  }
+  return {
+    getEntries: async () => storage.getFinanceEntries(),
+    addEntry: async (entry: FinanceEntry) => storage.addFinanceEntry(entry),
+    updateEntry: async (entry: FinanceEntry) => storage.updateFinanceEntry(entry),
+    deleteEntry: async (id: string) => storage.deleteFinanceEntry(id),
+    deleteAllEntries: async () => storage.deleteAllFinanceEntries(),
   };
 }
 
@@ -290,12 +306,19 @@ export function useInventory() {
   const deleteItem = useCallback(async (id: string) => {
     const adapter = getInventoryAdapter();
     await adapter.deleteInventoryItem(id);
+    await removeOwnerPhotos(photoOwnerKey('inventory', id));
     await loadInventory();
   }, [loadInventory]);
 
   const deleteAll = useCallback(async () => {
     const adapter = getInventoryAdapter();
+    const current = await adapter.getInventory();
     await adapter.deleteAllInventory();
+    await Promise.all(
+      (Array.isArray(current) ? current : []).map(item =>
+        removeOwnerPhotos(photoOwnerKey('inventory', item.id))
+      )
+    );
     await loadInventory();
   }, [loadInventory]);
 
@@ -623,6 +646,69 @@ export function usePurchases() {
   }, [loadPurchases]);
 
   return { purchases, loading, error, refresh, getAdapter: getPurchaseAdapter };
+}
+
+/** Owner's daily finance entries - local mode or Supabase (mirrored to the cloud cache). */
+export function useFinance() {
+  const [entries, setEntries] = useState<FinanceEntry[]>(
+    () => readActiveCloudCache('finance') ?? storage.getFinanceEntries(),
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadEntries = useCallback(async () => {
+    try {
+      if (getStorageMode() === 'supabase' && isSupabaseAvailable()) {
+        await profileReady;
+      }
+      const data = await getFinanceAdapter().getEntries();
+      const list = Array.isArray(data) ? data : [];
+      if (isCloudActive()) writeCloudCache('finance', list);
+      setEntries(list);
+      setError(null);
+    } catch (err) {
+      console.error('[useFinance] Failed to load finance entries:', err);
+      setError(err instanceof Error ? err.message : String(err));
+      setEntries(readActiveCloudCache('finance') ?? storage.getFinanceEntries());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  useEffect(() => {
+    return onAuthChange(() => {
+      loadEntries();
+    });
+  }, [loadEntries]);
+
+  useEffect(() => onRealtimeChange(table => {
+    if (table === 'finance_entries') void loadEntries();
+  }), [loadEntries]);
+
+  const refresh = useCallback(async () => {
+    await loadEntries();
+  }, [loadEntries]);
+
+  const addEntry = useCallback(async (entry: FinanceEntry) => {
+    await getFinanceAdapter().addEntry(entry);
+    await loadEntries();
+  }, [loadEntries]);
+
+  const updateEntry = useCallback(async (entry: FinanceEntry) => {
+    await getFinanceAdapter().updateEntry(entry);
+    await loadEntries();
+  }, [loadEntries]);
+
+  const deleteEntry = useCallback(async (id: string) => {
+    await getFinanceAdapter().deleteEntry(id);
+    await loadEntries();
+  }, [loadEntries]);
+
+  return { entries, loading, error, refresh, addEntry, updateEntry, deleteEntry, getAdapter: getFinanceAdapter };
 }
 
 export function useSettings() {

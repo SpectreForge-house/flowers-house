@@ -1,9 +1,10 @@
-import { Order, OrderItem, Delivery } from '../types';
+import { Order, OrderItem, Delivery, InventoryReservation } from '../types';
 import { supabase } from '../lib/supabase';
 import { OrderStorageAdapter } from './orderStorageAdapter';
 import { getShopId } from './supabaseInventoryStorage';
 
 function rowToOrder(row: Record<string, unknown>, items: OrderItem[]): Order {
+  const deliveryAddress = (row.delivery_address as string) || '';
   return {
     id: row.id as string,
     customerId: row.customer_id as string,
@@ -11,7 +12,8 @@ function rowToOrder(row: Record<string, unknown>, items: OrderItem[]): Order {
     customerPhone: row.customer_phone as string,
     recipientName: row.recipient_name as string,
     recipientPhone: (row.recipient_phone as string) || undefined,
-    deliveryAddress: row.delivery_address as string,
+    orderType: deliveryAddress ? 'delivery' : 'in_store',
+    deliveryAddress,
     deliveryDate: row.delivery_date as string,
     deliveryTime: row.delivery_time as string,
     deliveryFee: Number(row.delivery_fee),
@@ -81,14 +83,14 @@ export class SupabaseOrderAdapter implements OrderStorageAdapter {
     return orderRows.map(o => rowToOrder(o, itemsByOrder.get(o.id) || []));
   }
 
-  async addOrder(order: Order): Promise<void> {
+  async addOrder(order: Order, delivery?: Delivery, reservations?: InventoryReservation[]): Promise<void> {
     if (!supabase) throw new Error('Supabase not configured');
 
     const shopId = await getShopId();
     if (!shopId) throw new Error('Not signed in or profile missing');
 
-    // Order + items are written in one database transaction. The delivery is
-    // added separately by the caller so existing flows keep working.
+    // Order, items, delivery and inventory reservations are written in one
+    // database transaction, so a failed reservation cannot leave a half-order.
     const { error } = await supabase.rpc('create_order_atomic', {
       p_order: {
         id: order.id,
@@ -113,7 +115,29 @@ export class SupabaseOrderAdapter implements OrderStorageAdapter {
         quantity: item.quantity,
         price: item.price,
       })),
-      p_delivery: null,
+      p_delivery: delivery
+        ? {
+            id: delivery.id,
+            address: delivery.address,
+            customer_name: delivery.customerName,
+            recipient_name: delivery.recipientName,
+            phone: delivery.phone,
+            scheduled_time: delivery.scheduledTime,
+            scheduled_date: delivery.scheduledDate,
+            status: delivery.status,
+            notes: delivery.notes || '',
+            created_at: delivery.createdAt,
+            updated_at: delivery.updatedAt,
+          }
+        : null,
+      p_reservations: (reservations || []).map(reservation => ({
+        id: reservation.id,
+        inventory_item_id: reservation.inventoryItemId,
+        quantity: reservation.quantity,
+        note: reservation.note || '',
+        created_at: reservation.createdAt,
+        updated_at: reservation.updatedAt,
+      })),
     });
 
     if (error) throw new Error(`Failed to add order atomically: ${error.message}`);

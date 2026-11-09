@@ -18,7 +18,7 @@ This document explains how to set up the Supabase backend for the Flower's House
 
 1. In the Supabase dashboard, go to **SQL Editor** (left sidebar)
 2. Click "New query"
-3. Apply every migration in order: `001_initial_schema.sql`, `002_add_insert_rls_policies.sql`, `003_bootstrap_shop_profile.sql`, `004_fix_user_profiles_rls_recursion.sql`, `005_confirm_order_atomicity.sql`, `006_cloud_parity.sql`, `007_rls_hardening.sql`, then `008_team_invites.sql`
+3. Apply every migration in order: `001_initial_schema.sql`, `002_add_insert_rls_policies.sql`, `003_bootstrap_shop_profile.sql`, `004_fix_user_profiles_rls_recursion.sql`, `005_confirm_order_atomicity.sql`, `006_cloud_parity.sql`, `007_rls_hardening.sql`, `008_team_invites.sql`, `009_order_sequence_sync.sql`, `010_order_integrity.sql`, `011_nickname_cooldown.sql`, `012_inventory_intake_fields.sql`, `013_purchase_delivery_address.sql`, then `014_finance_entries.sql`
 4. Copy the entire SQL content of each file into the query editor and click "Run" (Ctrl+Enter)
 5. Verify: you should see "Success. No rows returned" at the bottom
 
@@ -44,9 +44,40 @@ Migration `008_team_invites.sql` adds:
 - controlled transfer of an invited user from their empty auto-created shop into the inviting shop
 - an 8th schema-health check in **Settings → Cloud**
 
+Migration `009_order_sequence_sync.sql` adds:
+- a trigger that advances `order_number_seq` whenever an explicit `ORD-XXX` order id is inserted
+- a one-time backfill of the sequence from orders that were migrated before this migration
+- protection against new orders reusing ids such as `ORD-001` after a local-to-cloud migration
+
+Migration `010_order_integrity.sql` adds:
+- atomic creation of the order, its items, delivery and inventory reservations in one transaction
+- reservation-aware stock checks, including `deduct_inventory_for_order`, so two orders cannot overbook the same stock
+- automatic completion of an order's active reservations when its inventory is deducted
+- the `adjust_inventory_stock` RPC for add/remove/waste, replacing read-modify-write updates
+- a `schema_version` value in `app_meta` used by the in-app health check
+
+Migration `011_nickname_cooldown.sql` adds:
+- a `display_name_updated_at` column on `user_profiles`
+- `update_my_profile` nickname validation (trimmed, 1–40 characters) and a 3-day change cooldown
+- schema version `11` for the in-app health check
+
+Migration `012_inventory_intake_fields.sql` adds:
+- optional `supplier`, `supplier_sku`, `pack_note` and `notes` columns on `inventory_items`
+- a supplier index for catalog lookups
+
+Migration `013_purchase_delivery_address.sql` adds:
+- an optional `delivery_address` column on `client_purchases`, so every manually added bouquet can store its own delivery address.
+- schema version `13` for the in-app health check
+
+Migration `014_finance_entries.sql` adds:
+- the owner-only `finance_entries` table for the daily cash-book (revenue and expenses)
+- row-level security that rejects reads and writes from managers and staff
+- realtime publication so a second owner device updates immediately
+- schema version `14` for the in-app health check
+
 ### What the migration creates:
 
-**16 tables:**
+**20 tables:**
 | Table | Purpose |
 |-------|---------|
 | `shops` | Multi-shop support (one row for Flower's House) |
@@ -63,7 +94,11 @@ Migration `008_team_invites.sql` adds:
 | `settings` | Business settings (singleton per shop) |
 | `user_profiles` | Auth user profiles with roles |
 | `shop_invites` | One-time team invite codes |
-| `user_reminders_read` | Per-user dismissed reminders |
+| `user_reminders_read` | Per-user read reminder state |
+| `user_reminders_dismissed` | Per-user dismissed reminder state |
+| `client_purchases` | Manually added client purchase history |
+| `photos` | Photo metadata for the storage bucket |
+| `finance_entries` | Owner-only daily revenue and expenses |
 | `app_meta` | Storage versioning metadata |
 
 **Base RPC functions (001):**
@@ -155,15 +190,24 @@ Create a `.env` file in the project root (never commit this file):
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_PUBLIC_APP_URL=http://localhost:5173
 ```
 
-Get these values from: **Supabase Dashboard → Settings → API**
+Get the Supabase values from **Supabase Dashboard → Settings → API**.
+`VITE_PUBLIC_APP_URL` is optional; it sets the base URL used in sign-up
+confirmation and password-reset emails. When omitted, the web app uses the
+current browser origin. For desktop builds set it to the hosted web URL. Native
+Android builds ignore it and use the `com.flowershouse.app://` scheme.
 
 The `.env.example` file shows the required variables without real values.
 
 ## 7. Authentication and Team Management
 
 - Sign-up and sign-in use Supabase Auth email/password.
+- Email confirmation is supported: after sign-up the app asks the user to confirm their email and offers to resend the confirmation message.
+- Password reset is supported from the sign-in dialog. The reset link opens `/reset-password`, where the user chooses a new password. Expired or already-used links show a clear message with a "request a new link" action.
+- Add the web app URL (and `/reset-password`) to **Authentication → URL Configuration → Redirect URLs** so browser confirmation and reset links return to the app. Set `VITE_PUBLIC_APP_URL` for desktop builds.
+- For the Android app also allow `com.flowershouse.app://auth/confirm` and `com.flowershouse.app://reset-password`. The app listens for `appUrlOpen`, converts the tokens into a Supabase session and opens the matching route.
 - The first sign-in creates a shop and owner profile via `create_initial_shop_and_profile`.
 - Owners invite managers and staff from **Settings → Team**. The invite is a one-time code, bound to the invited email and valid for 7 days.
 - An invited user must register or sign in with the same email. The app stores the code locally and applies it after authentication.
@@ -174,12 +218,17 @@ The `.env.example` file shows the required variables without real values.
 ## 8. Current Limitations
 
 - Cloud writes do not queue while offline; offline cloud mode is read-only and reads come from the per-user cache of the last successful sync.
-- Mobile/PWA layout work is deferred.
+- The Android app uses the same cloud-first cache and blocks writes while offline.
+- Android release builds require a signing keystore; the CI artifact is a debug APK.
 - Automatic backups are desktop-only.
 
 ## 9. Schema Health Check
 
-After signing in, open **Settings → Cloud** and click **Check schema**. The app expects **8/8** checks through migration `008`. If a check is missing, apply the migration shown next to it in the Supabase SQL Editor.
+After signing in, open **Settings → Cloud** and click **Check schema**. The app expects **9/9** checks through migration `010`. If a check is missing, apply the migration shown next to it in the Supabase SQL Editor. Migration `009` is a data-integrity trigger and is checked indirectly by `010`; apply it before `010`. The `schemaVersion` check reads `app_meta.schema_version` and expects `10` or newer.
+
+### Data reconciliation
+
+After a migration, click **Compare data** in **Settings → Cloud**. The app compares local and cloud ids for customers, inventory, bouquets, orders, deliveries, transactions, reservations, purchases, history, photos, settings and reminders. Rows marked **Missing in cloud** were not uploaded; **Extra in cloud** rows exist only in Supabase (for example, records created on another device). The report is read-only and does not change either side.
 
 ## 10. Troubleshooting
 
@@ -195,8 +244,22 @@ RLS is blocking access. Make sure the user is authenticated and has a `user_prof
 - `shop_not_empty`: the invited account already has a shop with data. Remove or move that data, or sign in with a fresh account.
 - `already_member_other_shop`: an account can belong to only one shop.
 
+### Sign-up says the email rate limit was reached
+Supabase's built-in email service is limited to a few messages per hour **per project**, and the limit is shared by the phone, the PC and every other device. Retrying immediately does not bypass it. Pick one of these fixes in the Supabase dashboard:
+
+- **No email verification needed (simplest):** open **Authentication → Providers → Email** and turn off **Confirm email**. New accounts can sign in immediately and no confirmation email is sent.
+- **Keep verification:** configure **Authentication → SMTP Settings** with your own mail provider and raise the auth email rate limits under **Authentication → Rate Limits**.
+
+Before retrying, check the inbox and spam folder: the confirmation message may already have arrived. Password-reset emails use the same quota.
+
 ### Order ID collision after migration
-After migrating existing data, set the sequence to the correct value:
+Migration `009_order_sequence_sync.sql` backfills the sequence and keeps it in sync with explicit `ORD-XXX` inserts. Apply it before running the local-to-cloud migration.
+
+If the sequence is still wrong (for example because `009` was skipped or the sequence was changed manually), set it from the highest existing order id:
 ```sql
-SELECT set_order_number(<max_existing_order_number + 1>);
+SELECT set_order_number(
+  (SELECT COALESCE(MAX((substring(id FROM 5))::INTEGER), 0) + 1
+   FROM orders
+   WHERE id ~ '^ORD-[0-9]+$')
+);
 ```

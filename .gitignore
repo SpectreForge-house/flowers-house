@@ -29,6 +29,10 @@ lerna-debug.log*
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
+keystore.properties
+android/keystore/
 
 # Runtime and tooling caches
 .server.pid
@@ -39,6 +43,15 @@ lerna-debug.log*
 .eslintcache
 .oxlintcache
 *.local
+.kotlin/
+android/.kotlin/
+
+# Agent tooling (local skills and session data)
+.opencode/
+
+# Python bytecode
+__pycache__/
+*.pyc
 
 # Test output
 test-results/

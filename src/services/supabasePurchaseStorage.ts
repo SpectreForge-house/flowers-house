@@ -11,6 +11,7 @@ function rowToPurchase(row: Record<string, unknown>): ClientPurchase {
     composition: (row.composition as string) || '',
     price: Number(row.price),
     date: row.purchase_date as string,
+    deliveryAddress: (row.delivery_address as string) || undefined,
     note: (row.note as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -48,6 +49,7 @@ export class SupabasePurchaseAdapter implements PurchaseStorageAdapter {
       composition: purchase.composition,
       price: purchase.price,
       purchase_date: purchase.date,
+      delivery_address: purchase.deliveryAddress || null,
       note: purchase.note || null,
       created_at: purchase.createdAt,
       updated_at: purchase.updatedAt,
@@ -66,6 +68,7 @@ export class SupabasePurchaseAdapter implements PurchaseStorageAdapter {
         composition: purchase.composition,
         price: purchase.price,
         purchase_date: purchase.date,
+        delivery_address: purchase.deliveryAddress || null,
         note: purchase.note || null,
         updated_at: purchase.updatedAt,
       })

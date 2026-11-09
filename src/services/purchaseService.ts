@@ -22,6 +22,7 @@ export interface PurchaseFormValues {
   composition: string;
   price: number;
   date: string;
+  deliveryAddress?: string;
   note?: string;
 }
 
@@ -34,6 +35,7 @@ export async function createPurchase(customerId: string, data: PurchaseFormValue
     composition: data.composition.trim(),
     price: data.price,
     date: data.date,
+    deliveryAddress: data.deliveryAddress?.trim() || undefined,
     note: data.note?.trim() || undefined,
     createdAt: now,
     updatedAt: now,
@@ -53,6 +55,7 @@ export async function updatePurchase(existing: ClientPurchase, data: PurchaseFor
     composition: data.composition.trim(),
     price: data.price,
     date: data.date,
+    deliveryAddress: data.deliveryAddress?.trim() || undefined,
     note: data.note?.trim() || undefined,
     updatedAt: new Date().toISOString(),
   };
@@ -72,10 +75,14 @@ export async function deletePurchase(id: string): Promise<void> {
   }
 }
 
-export function getCustomerPurchases(customerId: string): ClientPurchase[] {
-  const purchases = isCloudActive()
-    ? readCloudCache('purchases') ?? storage.getPurchases()
-    : storage.getPurchases();
+export function getCustomerPurchases(
+  customerId: string,
+  purchasesOverride?: ClientPurchase[],
+): ClientPurchase[] {
+  const purchases = purchasesOverride
+    ?? (isCloudActive()
+      ? readCloudCache('purchases') ?? storage.getPurchases()
+      : storage.getPurchases());
 
   return purchases
     .filter(p => p.customerId === customerId)
@@ -133,6 +140,8 @@ export interface PurchaseHistoryEntry {
   price: number;
   /** ISO date used for sorting and stats: order createdAt or purchase date. */
   date: string;
+  /** Delivery address attached to this bouquet (order address or manual entry). */
+  deliveryAddress?: string;
   note?: string;
   photos: string[];
 }
@@ -141,6 +150,7 @@ export function buildPurchaseHistory(
   customerId: string,
   orders: Order[],
   bouquets: Bouquet[],
+  purchasesOverride?: ClientPurchase[],
 ): PurchaseHistoryEntry[] {
   const orderEntries: PurchaseHistoryEntry[] = orders
     .filter(o => o.customerId === customerId && o.status !== 'cancelled')
@@ -161,12 +171,13 @@ export function buildPurchaseHistory(
         // What the customer actually paid for this order.
         price: o.total,
         date: o.createdAt,
+        deliveryAddress: o.deliveryAddress || undefined,
         note: o.comment,
         photos: listPhotos(photoOwnerKey('order', o.id)),
       };
     });
 
-  const manualEntries: PurchaseHistoryEntry[] = getCustomerPurchases(customerId)
+  const manualEntries: PurchaseHistoryEntry[] = getCustomerPurchases(customerId, purchasesOverride)
     .map(p => ({
       key: photoOwnerKey('purchase', p.id),
       id: p.id,
@@ -176,6 +187,7 @@ export function buildPurchaseHistory(
       composition: p.composition,
       price: p.price,
       date: p.date,
+      deliveryAddress: p.deliveryAddress,
       note: p.note,
       photos: listPhotos(photoOwnerKey('purchase', p.id)),
     }));

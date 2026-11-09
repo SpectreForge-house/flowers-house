@@ -53,6 +53,9 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
   const today = new Date().toISOString().split('T')[0];
   // Repeat always starts at today, never at the old purchase date.
   const [date, setDate] = useState(purchase?.date || today);
+  const [deliveryAddress, setDeliveryAddress] = useState(
+    purchase?.deliveryAddress || repeatFrom?.deliveryAddress || ''
+  );
   const [note, setNote] = useState(purchase?.note || '');
   const [photos, setPhotos] = useState<string[]>(
     purchase ? listPhotos(photoOwnerKey('purchase', purchase.id)) : repeatFrom ? [...repeatFrom.photos] : []
@@ -74,6 +77,7 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
     composition: purchase?.composition || repeatFrom?.composition || '',
     price: purchase ? String(purchase.price) : repeatFrom ? String(repeatFrom.price) : '',
     date: purchase?.date || today,
+    deliveryAddress: purchase?.deliveryAddress || repeatFrom?.deliveryAddress || '',
     note: purchase?.note || '',
     photos: (purchase
       ? listPhotos(photoOwnerKey('purchase', purchase.id))
@@ -88,10 +92,11 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
     composition !== initial.composition ||
     price !== initial.price ||
     date !== initial.date ||
+    deliveryAddress !== initial.deliveryAddress ||
     note !== initial.note ||
     photos.join(',') !== initial.photos ||
     pendingFiles.length > 0
-  ), [name, composition, price, date, note, photos, pendingFiles, initial]);
+  ), [name, composition, price, date, deliveryAddress, note, photos, pendingFiles, initial]);
 
   const guard = useCloseGuard({ isDirty, onClose });
 
@@ -129,7 +134,7 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
 
     setSaving(true);
     try {
-      const values = { name, composition, price: parsedPrice, date, note };
+      const values = { name, composition, price: parsedPrice, date, deliveryAddress, note };
       // createdRef guards a retry after a photo failure: the entry already
       // exists by then and must be updated, never created a second time
       // (that would count it twice in the statistics).
@@ -242,6 +247,17 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
             />
             {dateError && <p className="text-xs text-status-danger mt-1">{dateError}</p>}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">{t.purchases.deliveryAddressOptional}</label>
+          <input
+            type="text"
+            value={deliveryAddress}
+            onChange={(e) => setDeliveryAddress(e.target.value)}
+            placeholder={t.purchases.deliveryAddressPlaceholder}
+            className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary"
+          />
         </div>
 
         <div>

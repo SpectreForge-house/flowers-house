@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Flower\'s House</string>
+    <string name="title_activity_main">Flower\'s House</string>
+    <string name="package_name">com.flowershouse.app</string>
+    <string name="custom_url_scheme">com.flowershouse.app</string>
+</resources>

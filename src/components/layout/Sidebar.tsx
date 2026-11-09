@@ -8,8 +8,6 @@ import {
   Truck, 
   BarChart3, 
   Settings,
-  Menu,
-  X,
   Globe,
   Plus,
   Trash2,
@@ -20,7 +18,8 @@ import {
   LogIn,
   LogOut,
   Cloud,
-  Palette
+  Palette,
+  Wallet
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useLanguage, Language } from '../../i18n';
@@ -32,23 +31,13 @@ import { isSupabaseAvailable } from '../../services/authService';
 import { canAccessPath } from '../../services/permissions';
 
 export function Sidebar() {
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [inventoryExpanded, setInventoryExpanded] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const { t, language, setLanguage } = useLanguage();
   const { user, signOut } = useAuth();
-  const { role } = usePermissions();
+  const { role, profile } = usePermissions();
   const location = useLocation();
   const supabaseReady = isSupabaseAvailable();
-
-  useEffect(() => {
-    if (isMobileOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isMobileOpen]);
 
   // Keep the active menu item visible when the page changes. Scrolls only the
   // minimum needed amount and only when the item is outside the visible area -
@@ -69,7 +58,7 @@ export function Sidebar() {
     } else if (linkRect.bottom > navRect.bottom) {
       nav.scrollTop += linkRect.bottom - navRect.bottom;
     }
-  }, [location.pathname, isMobileOpen]);
+  }, [location.pathname]);
 
   const languages: { value: Language; label: string; flag: string }[] = [
     { value: 'en', label: 'English', flag: '\uD83C\uDDEC\uD83C\uDDE7' },
@@ -88,6 +77,7 @@ export function Sidebar() {
     { path: '/reservations', label: t.nav.reservations, icon: AlertTriangle },
     { path: '/history', label: t.nav.history, icon: Clock },
     { path: '/statistics', label: t.nav.statistics, icon: BarChart3 },
+    { path: '/finance', label: t.nav.finance, icon: Wallet },
     { path: '/themes', label: t.nav.themes, icon: Palette },
     { path: '/settings', label: t.nav.settings, icon: Settings },
   ];
@@ -133,9 +123,6 @@ export function Sidebar() {
               <div className="flex items-center">
                 <NavLink
                   to={item.path}
-                  onClick={() => {
-                    setIsMobileOpen(false);
-                  }}
                   data-active={isActive && !isExpanded ? 'true' : undefined}
                   className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                     isActive && !isExpanded
@@ -176,7 +163,6 @@ export function Sidebar() {
                     <NavLink
                       key={child.path}
                       to={child.path}
-                      onClick={() => setIsMobileOpen(false)}
                       data-active={isActive ? 'true' : undefined}
                       className={({ isActive }) =>
                         `flex items-center gap-3 pl-12 pr-3 py-2 rounded-lg transition-colors ml-1 ${
@@ -228,7 +214,7 @@ export function Sidebar() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 px-2">
                 <Cloud size={14} className="text-accent-green-light" />
-                <span className="text-xs text-text-secondary truncate">{user.email}</span>
+                <span className="text-xs text-text-secondary truncate">{profile?.displayName || user.email}</span>
               </div>
               <button
                 onClick={signOut}
@@ -252,7 +238,7 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-border shrink-0">
         <div className="text-xs text-text-muted">
-          v1.0.0<span className="ml-4 text-text-muted">By Spectre_Forge</span>
+          v{__APP_VERSION__}<span className="ml-4 text-text-muted">By Spectre_Forge</span>
         </div>
       </div>
     </div>
@@ -260,34 +246,9 @@ export function Sidebar() {
 
   return (
     <>
-      <button
-        onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-card rounded-lg border border-border text-text-primary"
-      >
-        <Menu size={24} />
-      </button>
-
       <aside className="hidden lg:flex flex-col w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0">
         {renderNavContent()}
       </aside>
-
-      {isMobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setIsMobileOpen(false)}
-          />
-          <aside className="absolute left-0 top-0 w-64 h-full bg-sidebar border-r border-border">
-            <button
-              onClick={() => setIsMobileOpen(false)}
-              className="absolute top-4 right-4 p-1 text-text-secondary hover:text-text-primary"
-            >
-              <X size={20} />
-            </button>
-            {renderNavContent()}
-          </aside>
-        </div>
-      )}
 
       {supabaseReady && <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />}
     </>

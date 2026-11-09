@@ -70,7 +70,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnBa
         if (closeOnBackdrop && e.target === overlayRef.current) onClose();
       }}
     >
-      <div className={`${sizeClasses[size]} bg-card sm:rounded-lg border border-border shadow-2xl max-h-[90vh] sm:max-h-[calc(100vh-200px)] overflow-hidden sm:overflow-y-auto`}>
+      <div className={`${sizeClasses[size]} bg-card sm:rounded-lg border border-border shadow-2xl max-h-[88vh] sm:max-h-[calc(100vh-200px)] overflow-hidden sm:overflow-y-auto rounded-t-2xl`}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
           <button
@@ -80,7 +80,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnBa
             <X size={20} />
           </button>
         </div>
-        <div className="p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 max-h-[calc(100vh-200px)] overflow-y-auto">
           {children}
         </div>
       </div>

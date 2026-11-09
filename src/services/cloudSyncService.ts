@@ -9,10 +9,13 @@ import { SupabaseBouquetAdapter } from './supabaseBouquetStorage';
 import { SupabaseOrderAdapter } from './supabaseOrderStorage';
 import { SupabaseHistoryAdapter } from './supabaseHistoryStorage';
 import { SupabasePurchaseAdapter } from './supabasePurchaseStorage';
+import { SupabaseFinanceAdapter } from './supabaseFinanceStorage';
 import { SupabaseSettingsAdapter } from './supabaseSettingsStorage';
 import { SupabaseReminderAdapter } from './supabaseReminderStorage';
 import { exportPhotos } from './photoStorage';
 import { uploadCloudPhoto } from './supabasePhotoStorage';
+
+export { hasLocalData } from './localDataService';
 
 export interface MigrationCounts {
   customers: number;
@@ -24,6 +27,7 @@ export interface MigrationCounts {
   reservations: number;
   purchases: number;
   history: number;
+  finance: number;
   photos: number;
   settings: boolean;
   reminders: boolean;
@@ -42,13 +46,14 @@ export interface CloudCounts {
   bouquets: number;
   orders: number;
   purchases: number;
+  finance: number;
   photos: number;
 }
 
 export function emptyCounts(): MigrationCounts {
   return {
     customers: 0, inventory: 0, bouquets: 0, orders: 0, deliveries: 0,
-    transactions: 0, reservations: 0, purchases: 0, history: 0,
+    transactions: 0, reservations: 0, purchases: 0, history: 0, finance: 0,
     photos: 0, settings: false, reminders: false,
   };
 }
@@ -129,11 +134,11 @@ export async function migrateCollection<T>(
 
 export async function getCloudCounts(): Promise<CloudCounts> {
   if (!supabase || !isSupabaseAvailable() || !getAuthState().user) {
-    return { customers: 0, inventory: 0, bouquets: 0, orders: 0, purchases: 0, photos: 0 };
+    return { customers: 0, inventory: 0, bouquets: 0, orders: 0, purchases: 0, finance: 0, photos: 0 };
   }
   await profileReady;
   const shopId = await getShopId();
-  if (!shopId) return { customers: 0, inventory: 0, bouquets: 0, orders: 0, purchases: 0, photos: 0 };
+  if (!shopId) return { customers: 0, inventory: 0, bouquets: 0, orders: 0, purchases: 0, finance: 0, photos: 0 };
 
   const count = async (table: string): Promise<number> => {
     const { count: value, error } = await supabase!
@@ -144,11 +149,57 @@ export async function getCloudCounts(): Promise<CloudCounts> {
     return value || 0;
   };
 
-  const [customers, inventory, bouquets, orders, purchases, photos] = await Promise.all([
+  const [customers, inventory, bouquets, orders, purchases, finance, photos] = await Promise.all([
     count('customers'), count('inventory_items'), count('bouquets'),
-    count('orders'), count('client_purchases'), count('photos'),
+    count('orders'), count('client_purchases'), count('finance_entries'), count('photos'),
   ]);
-  return { customers, inventory, bouquets, orders, purchases, photos };
+  return { customers, inventory, bouquets, orders, purchases, finance, photos };
+}
+
+export interface FinanceMigrationResult {
+  added: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
+/** IDs of the shop's finance entries in the cloud; empty when signed out. */
+export async function getCloudFinanceIds(): Promise<Set<string>> {
+  if (!supabase || !isSupabaseAvailable() || !getAuthState().user) return new Set();
+  await profileReady;
+  const shopId = await getShopId();
+  if (!shopId) return new Set();
+
+  const adapter = new SupabaseFinanceAdapter();
+  const entries = await adapter.getEntries();
+  return new Set(entries.map(entry => entry.id));
+}
+
+/**
+ * Uploads only the owner's local finance entries that are missing from the
+ * cloud. Used by the Finance tab banner, so a device that was switched to
+ * cloud mode after entering the cash-book can catch up in one click.
+ */
+export async function migrateLocalFinanceToCloud(): Promise<FinanceMigrationResult> {
+  if (!supabase || !isSupabaseAvailable() || !getAuthState().user) {
+    throw new Error('Sign in to a cloud account before migrating');
+  }
+  await profileReady;
+  const shopId = await getShopId();
+  if (!shopId) throw new Error('No shop profile found');
+
+  const errors: string[] = [];
+  const adapter = new SupabaseFinanceAdapter();
+  const result = await migrateCollection({
+    errors,
+    label: 'finance entry',
+    local: storage.getFinanceEntries(),
+    loadCloud: () => adapter.getEntries(),
+    getId: entry => entry.id,
+    add: entry => adapter.addEntry(entry),
+  });
+
+  return { ...result, errors };
 }
 
 /**
@@ -184,6 +235,7 @@ export async function migrateLocalToCloud(
   const orderAdapter = new SupabaseOrderAdapter();
   const historyAdapter = new SupabaseHistoryAdapter();
   const purchaseAdapter = new SupabasePurchaseAdapter();
+  const financeAdapter = new SupabaseFinanceAdapter();
   const settingsAdapter = new SupabaseSettingsAdapter();
   const reminderAdapter = new SupabaseReminderAdapter();
 
@@ -288,7 +340,18 @@ export async function migrateLocalToCloud(
     add: record => historyAdapter.addHistory(record),
   }));
 
-  // 9. Settings - only when the shop has no settings row yet, so a second
+  // 9. Finance (owner's cash-book)
+  progress('finance');
+  counts.finance = apply(await migrateCollection({
+    errors,
+    label: 'finance entry',
+    local: storage.getFinanceEntries(),
+    loadCloud: () => financeAdapter.getEntries(),
+    getId: entry => entry.id,
+    add: entry => financeAdapter.addEntry(entry),
+  }));
+
+  // 10. Settings - only when the shop has no settings row yet, so a second
   //    device can never overwrite the cloud configuration with stale cache.
   progress('settings');
   try {
@@ -311,7 +374,7 @@ export async function migrateLocalToCloud(
     recordError(errors, 'settings', error);
   }
 
-  // 10. Reminders (per user)
+  // 11. Reminders (per user)
   progress('reminders');
   try {
     const [cloudRead, cloudDismissed] = await Promise.all([
@@ -337,7 +400,7 @@ export async function migrateLocalToCloud(
     recordError(errors, 'reminders', error);
   }
 
-  // 11. Photos (local files -> Supabase Storage; metadata in photos table)
+  // 12. Photos (local files -> Supabase Storage; metadata in photos table)
   progress('photos');
   try {
     const backup = await exportPhotos();
@@ -365,17 +428,6 @@ export async function migrateLocalToCloud(
 
   progress('done');
   return { counts, skipped, failed, errors };
-}
-
-/** True when the local cache contains anything worth migrating. */
-export function hasLocalData(): boolean {
-  return (
-    storage.getCustomers().length > 0 ||
-    storage.getInventory().length > 0 ||
-    storage.getBouquets().length > 0 ||
-    storage.getOrders().length > 0 ||
-    storage.getPurchases().length > 0
-  );
 }
 
 export function isCloudMode(): boolean {

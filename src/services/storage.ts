@@ -1,4 +1,4 @@
-import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, Settings, HistoryRecord, InventoryReservation, ClientPurchase } from '../types';
+import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, Settings, HistoryRecord, InventoryReservation, ClientPurchase, FinanceEntry } from '../types';
 import { sampleCustomers, sampleInventory, sampleBouquets, sampleOrders, sampleDeliveries, sampleTransactions, sampleSettings } from '../data/sampleData';
 import { exportPhotos, exportPhotoIndex, importPhotos, PhotoBackup } from './photoStorage';
 import { getStorageMode } from './storageAdapter';
@@ -28,6 +28,8 @@ const STORAGE_KEYS = {
   // Manually added bouquet purchases per client. Added with the client
   // purchase history feature - purely additive, existing records untouched.
   purchases: 'flower-shop-purchases',
+  // Owner's daily revenue / expense bookkeeping (separate from orders).
+  finance: 'flower-shop-finance',
 };
 
 export interface BackupData {
@@ -51,6 +53,8 @@ export interface BackupData {
   photos?: PhotoBackup;
   /** Manually added purchases. Optional so old backups still restore. */
   purchases?: ClientPurchase[];
+  /** Owner's finance entries. Optional so old backups still restore. */
+  finance?: FinanceEntry[];
 }
 
 export const ALL_STORAGE_KEYS = Object.values(STORAGE_KEYS);
@@ -223,6 +227,38 @@ export function deletePurchase(id: string): void {
 
 export function deletePurchasesByCustomer(customerId: string): void {
   savePurchases(getPurchases().filter(p => p.customerId !== customerId));
+}
+
+// Owner's finance entries (daily revenue and expenses).
+export function getFinanceEntries(): FinanceEntry[] {
+  return loadFromStorage<FinanceEntry>(STORAGE_KEYS.finance);
+}
+
+export function saveFinanceEntries(entries: FinanceEntry[]): void {
+  saveToStorage<FinanceEntry>(STORAGE_KEYS.finance, entries);
+}
+
+export function addFinanceEntry(entry: FinanceEntry): void {
+  const entries = getFinanceEntries();
+  entries.push(entry);
+  saveFinanceEntries(entries);
+}
+
+export function updateFinanceEntry(updated: FinanceEntry): void {
+  const entries = getFinanceEntries();
+  const index = entries.findIndex(entry => entry.id === updated.id);
+  if (index !== -1) {
+    entries[index] = updated;
+    saveFinanceEntries(entries);
+  }
+}
+
+export function deleteFinanceEntry(id: string): void {
+  saveFinanceEntries(getFinanceEntries().filter(entry => entry.id !== id));
+}
+
+export function deleteAllFinanceEntries(): void {
+  saveFinanceEntries([]);
 }
 
 // Inventory
@@ -559,6 +595,7 @@ function createLocalBackup(): BackupData {
     remindersRead: getReadReminders(),
     remindersDismissed: getDismissedReminders(),
     purchases: loadFromStorage<ClientPurchase>(STORAGE_KEYS.purchases),
+    finance: loadFromStorage<FinanceEntry>(STORAGE_KEYS.finance),
   };
 }
 
@@ -592,6 +629,7 @@ export async function restoreBackup(backup: BackupData): Promise<void> {
   saveToStorage<InventoryReservation>(STORAGE_KEYS.reservations, backup.reservations || []);
   saveToStorage<HistoryRecord>(STORAGE_KEYS.history, backup.history || []);
   saveToStorage<ClientPurchase>(STORAGE_KEYS.purchases, backup.purchases || []);
+  saveToStorage<FinanceEntry>(STORAGE_KEYS.finance, backup.finance || []);
   saveSettings(backup.settings || sampleSettings);
   localStorage.setItem(STORAGE_KEYS.language, backup.language || 'en');
   localStorage.setItem(STORAGE_KEYS.remindersRead, JSON.stringify(backup.remindersRead || []));

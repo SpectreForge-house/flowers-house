@@ -2,7 +2,7 @@
 import { Cloud, HardDrive, ArrowRight, Check, AlertTriangle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '../../i18n';
 import { useAuth } from '../../contexts/AuthContext';
-import { getStorageMode, setStorageMode } from '../../services/storageAdapter';
+import { getStorageMode, setCloudModePreference, setStorageMode } from '../../services/storageAdapter';
 import { isSupabaseAvailable } from '../../services/authService';
 import * as storage from '../../services/storage';
 import {
@@ -14,6 +14,10 @@ import {
   migrateLocalToCloud,
 } from '../../services/cloudSyncService';
 import { checkCloudHealth, CloudHealthReport } from '../../services/cloudHealthService';
+import {
+  buildReconciliationReport,
+  ReconciliationReport,
+} from '../../services/cloudReconciliationService';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 
@@ -27,6 +31,7 @@ export function CloudSyncPanel() {
     bouquets: storage.getBouquets().length,
     orders: storage.getOrders().length,
     purchases: storage.getPurchases().length,
+    finance: storage.getFinanceEntries().length,
   }));
   const [cloudCounts, setCloudCounts] = useState<CloudCounts | null>(null);
   const [loadingCounts, setLoadingCounts] = useState(false);
@@ -36,6 +41,8 @@ export function CloudSyncPanel() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [health, setHealth] = useState<CloudHealthReport | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
+  const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null);
+  const [checkingReconciliation, setCheckingReconciliation] = useState(false);
 
   const supabaseReady = isSupabaseAvailable() && user !== null;
 
@@ -46,6 +53,7 @@ export function CloudSyncPanel() {
       bouquets: storage.getBouquets().length,
       orders: storage.getOrders().length,
       purchases: storage.getPurchases().length,
+      finance: storage.getFinanceEntries().length,
     });
     if (!supabaseReady) {
       setCloudCounts(null);
@@ -70,6 +78,7 @@ export function CloudSyncPanel() {
     setMigrating(true);
     setShowConfirm(false);
     setResult(null);
+    setReconciliation(null);
     setProgress('');
     try {
       if (!hasLocalData()) {
@@ -102,6 +111,7 @@ export function CloudSyncPanel() {
       showToast('warning', t.cloudCustomers.notSignedIn);
       return;
     }
+    setCloudModePreference(newMode === 'supabase' ? 'auto' : 'local');
     setStorageMode(newMode);
     setMode(newMode);
     window.location.reload();
@@ -116,6 +126,18 @@ export function CloudSyncPanel() {
       showToast('error', err instanceof Error ? err.message : t.cloudCustomers.healthCheckError);
     } finally {
       setCheckingHealth(false);
+    }
+  };
+
+  const handleReconciliation = async () => {
+    setCheckingReconciliation(true);
+    try {
+      setReconciliation(await buildReconciliationReport());
+    } catch (err) {
+      console.error('[CloudSyncPanel] Reconciliation failed:', err);
+      showToast('error', err instanceof Error ? err.message : t.cloudCustomers.reconcileCheckError);
+    } finally {
+      setCheckingReconciliation(false);
     }
   };
 
@@ -170,6 +192,7 @@ export function CloudSyncPanel() {
         <CountTile icon={<HardDrive size={13} />} label={t.nav.bouquets} value={localCounts.bouquets} />
         <CountTile icon={<HardDrive size={13} />} label={t.nav.orders} value={localCounts.orders} />
         <CountTile icon={<HardDrive size={13} />} label={t.purchases.title} value={localCounts.purchases} />
+        <CountTile icon={<HardDrive size={13} />} label={t.nav.finance} value={localCounts.finance} />
         <CountTile icon={<HardDrive size={13} />} label={t.common.total} value={localTotal} />
       </div>
 
@@ -180,6 +203,7 @@ export function CloudSyncPanel() {
           <CountTile icon={<Cloud size={13} />} label={t.nav.bouquets} value={cloudCounts.bouquets} />
           <CountTile icon={<Cloud size={13} />} label={t.nav.orders} value={cloudCounts.orders} />
           <CountTile icon={<Cloud size={13} />} label={t.purchases.title} value={cloudCounts.purchases} />
+          <CountTile icon={<Cloud size={13} />} label={t.nav.finance} value={cloudCounts.finance} />
           <CountTile icon={<Cloud size={13} />} label={t.photos.photo} value={cloudCounts.photos} />
         </div>
       )}
@@ -251,6 +275,7 @@ export function CloudSyncPanel() {
                 <span>{t.nav.orders}: {result.counts.orders}</span>
                 <span>{t.nav.deliveries}: {result.counts.deliveries}</span>
                 <span>{t.purchases.title}: {result.counts.purchases}</span>
+                <span>{t.nav.finance}: {result.counts.finance}</span>
                 <span>{t.photos.photo}: {result.counts.photos}</span>
               </div>
               {result.skipped > 0 && (
@@ -265,6 +290,80 @@ export function CloudSyncPanel() {
               )}
             </div>
           )}
+
+          <div className="rounded-lg bg-surface border border-border p-3 space-y-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <RefreshCw size={14} className="text-accent-green-light" />
+                <span className="font-medium text-text-primary">{t.cloudCustomers.reconcileTitle}</span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleReconciliation()}
+                disabled={checkingReconciliation}
+              >
+                {checkingReconciliation ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {checkingReconciliation ? t.cloudCustomers.reconcileChecking : t.cloudCustomers.reconcileCheck}
+              </Button>
+            </div>
+
+            {reconciliation && (
+              <>
+                <div className={`flex items-center gap-2 ${reconciliation.ok ? 'text-status-success' : 'text-status-warning'}`}>
+                  {reconciliation.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
+                  <span className="font-medium">
+                    {reconciliation.ok ? t.cloudCustomers.reconcileAllGood : t.cloudCustomers.reconcileIssues}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {reconciliation.items.map(item => {
+                    const hasMissing = item.missingInCloud > 0;
+                    const hasError = Boolean(item.error);
+                    return (
+                      <div key={item.key} className="flex items-start gap-2">
+                        {hasMissing || hasError ? (
+                          <AlertTriangle
+                            size={13}
+                            className={`mt-0.5 shrink-0 ${hasError ? 'text-status-danger' : 'text-status-warning'}`}
+                          />
+                        ) : (
+                          <Check size={13} className="mt-0.5 shrink-0 text-status-success" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className="text-text-secondary">{t.cloudCustomers.reconcileItems[item.key]}</span>
+                            <span className="text-text-muted">
+                              {t.cloudCustomers.reconcileCounts
+                                .replace('{local}', String(item.localCount))
+                                .replace('{cloud}', String(item.cloudCount))}
+                            </span>
+                          </div>
+                          {hasMissing && (
+                            <p className="text-status-warning break-words">
+                              {t.cloudCustomers.reconcileMissing.replace('{count}', String(item.missingInCloud))}
+                              {item.missingSample.length > 0 && (
+                                <> — {t.cloudCustomers.reconcileSample.replace('{sample}', item.missingSample.join(', '))}</>
+                              )}
+                            </p>
+                          )}
+                          {item.extraInCloud > 0 && (
+                            <p className="text-text-muted break-words">
+                              {t.cloudCustomers.reconcileExtra.replace('{count}', String(item.extraInCloud))}
+                              {item.extraSample.length > 0 && (
+                                <> — {t.cloudCustomers.reconcileSample.replace('{sample}', item.extraSample.join(', '))}</>
+                              )}
+                            </p>
+                          )}
+                          {item.error && <p className="text-status-danger break-words">{item.error}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="rounded-lg bg-surface border border-border p-3 space-y-2 text-xs">
             <div className="flex items-center justify-between gap-2">
@@ -289,6 +388,9 @@ export function CloudSyncPanel() {
                   {health.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
                   <span className="font-medium">
                     {health.ok ? t.cloudCustomers.healthAllGood : t.cloudCustomers.healthIssues}
+                  </span>
+                  <span className="ml-auto text-text-muted">
+                    {health.checks.filter(check => check.ok).length}/{health.checks.length}
                   </span>
                 </div>
                 <div className="space-y-1.5">
