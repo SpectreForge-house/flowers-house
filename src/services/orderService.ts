@@ -178,21 +178,20 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, ad
 
 /**
  * Changes the date an order is recorded under in the client's purchase
- * history. Orders use `createdAt` as their purchase date, so only the date
- * part is replaced and the original time of day is kept for stable sorting.
+ * history. Orders use `createdAt` as their purchase date, so the caller passes
+ * a full ISO timestamp (see `replaceLocalDate`) that keeps the original time
+ * of day.
  */
 export async function updateOrderPurchaseDate(
   orderId: string,
-  date: string,
+  createdAt: string,
   orderAdapter: OrderStorageAdapter,
 ): Promise<Order | null> {
   const orders = await orderAdapter.getOrders();
   const order = orders.find(o => o.id === orderId);
   if (!order) return null;
 
-  const time = order.createdAt.match(/T(\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/)?.[1]
-    ?? '12:00:00.000Z';
-  order.createdAt = `${date}T${time}`;
+  order.createdAt = createdAt;
   order.updatedAt = new Date().toISOString();
   await orderAdapter.updateOrder(order);
   return order;

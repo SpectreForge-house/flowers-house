@@ -37,9 +37,9 @@ function makeAdapter(order: Order): OrderStorageAdapter {
 }
 
 describe('updateOrderPurchaseDate', () => {
-  it('replaces only the date part and keeps the original time', async () => {
+  it('stores the given timestamp and bumps updatedAt', async () => {
     const adapter = makeAdapter({ ...baseOrder });
-    const updated = await updateOrderPurchaseDate('ORD-001', '2026-10-01', adapter);
+    const updated = await updateOrderPurchaseDate('ORD-001', '2026-10-01T10:23:45.123Z', adapter);
 
     expect(updated?.createdAt).toBe('2026-10-01T10:23:45.123Z');
     expect(updated?.updatedAt).not.toBe(baseOrder.updatedAt);
@@ -50,7 +50,7 @@ describe('updateOrderPurchaseDate', () => {
 
   it('returns null when the order does not exist', async () => {
     const adapter = makeAdapter({ ...baseOrder });
-    const updated = await updateOrderPurchaseDate('ORD-999', '2026-10-01', adapter);
+    const updated = await updateOrderPurchaseDate('ORD-999', '2026-10-01T10:23:45.123Z', adapter);
 
     expect(updated).toBeNull();
     expect(adapter.updateOrder).not.toHaveBeenCalled();

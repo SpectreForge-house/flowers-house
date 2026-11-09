@@ -3,6 +3,7 @@ import { CalendarDays } from 'lucide-react';
 import { PurchaseHistoryEntry, updatePurchase } from '../../services/purchaseService';
 import { updateOrderPurchaseDate } from '../../services/orderService';
 import { getOrderAdapter } from '../../hooks/useStore';
+import { replaceLocalDate, toDateInputValue } from '../../utils/purchaseDate';
 import { showToast } from '../ui/Toast';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -21,7 +22,7 @@ interface LastPurchaseDateModalProps {
  */
 export function LastPurchaseDateModal({ entry, onClose, onSaved }: LastPurchaseDateModalProps) {
   const { t } = useLanguage();
-  const [date, setDate] = useState(entry.date.slice(0, 10));
+  const [date, setDate] = useState(() => toDateInputValue(entry.date));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +45,11 @@ export function LastPurchaseDateModal({ entry, onClose, onSaved }: LastPurchaseD
           note: purchase.note,
         });
       } else if (entry.source === 'order' && entry.order) {
-        await updateOrderPurchaseDate(entry.order.id, date, getOrderAdapter());
+        await updateOrderPurchaseDate(
+          entry.order.id,
+          replaceLocalDate(entry.order.createdAt, date),
+          getOrderAdapter(),
+        );
       }
 
       showToast('success', t.purchases.dateUpdated);
