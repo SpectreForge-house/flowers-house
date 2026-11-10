@@ -638,7 +638,7 @@ function CustomerForm({
   };
 
   const isValidPhone = (value: string): boolean => {
-    return /^\+?[\d\s\-\(\)]{4,}$/.test(value.trim());
+    return /^\+?[\d\s\-()]{4,}$/.test(value.trim());
   };
 
   const isValidEmail = (value: string): boolean => {

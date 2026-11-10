@@ -3,7 +3,7 @@ import { Edit, ImageOff, MapPin, Repeat, Trash2 } from 'lucide-react';
 import { PurchaseHistoryEntry, deletePurchase } from '../../services/purchaseService';
 import { deleteOrderAndCleanup } from '../../services/orderService';
 import { recordHistory } from '../../services/historyService';
-import { photoOwnerKey, removeOwnerPhotos, removePhoto } from '../../services/photoStorage';
+import { removeOwnerPhotos, removePhoto } from '../../services/photoStorage';
 import { formatCurrency, formatDate, getStatusColor } from '../../utils/formatters';
 import { useLanguage } from '../../i18n';
 import { useOrders, useInventory, getHistoryAdapter } from '../../hooks/useStore';

@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Truck, Clock, CheckCircle, MapPin, Phone, ExternalLink } from 'lucide-react';
 import { Delivery } from '../types';
-import { updateDeliveryStatus, getDeliveryStats } from '../services/deliveryService';
+import { updateDeliveryStatus } from '../services/deliveryService';
 import { formatDate, getDeliveryStatusColor } from '../utils/formatters';
 import { showToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';

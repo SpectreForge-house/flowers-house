@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Clock, MapPin, User, Cake } from 'lucide-react';
-import { Delivery, ImportantDate, Order } from '../types';
+import { ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Cake } from 'lucide-react';
+import { Delivery, ImportantDate } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { getDeliveryStatusColor } from '../utils/formatters';

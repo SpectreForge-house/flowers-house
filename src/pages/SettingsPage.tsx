@@ -389,7 +389,7 @@ export function SettingsPage() {
 
       void recordHistory('backup_created', 'backup', 'backup', `Backup created: ${filename}`, undefined, getHistoryAdapter());
       showToast('success', method === 'share' ? t.settings.backupShared : t.settings.backupCreated);
-    } catch (error) {
+    } catch {
       showToast('error', t.settings.backupError);
     }
   };
@@ -418,7 +418,7 @@ export function SettingsPage() {
         showToast('success', t.settings.backupRestored);
 
         setTimeout(() => window.location.reload(), 1000);
-      } catch (error) {
+      } catch {
         showToast('error', t.settings.restoreError);
       }
     };

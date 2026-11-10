@@ -3,7 +3,6 @@ import { Search, Plus, AlertTriangle, Trash2 } from 'lucide-react';
 import { InventoryItem, InventoryTransaction } from '../types';
 import { useInventory, getHistoryAdapter } from '../hooks/useStore';
 import { recordWaste, getWasteTransactions } from '../services/inventoryService';
-import { InventoryStorageAdapter } from '../services/inventoryStorageAdapter';
 import { recordHistory } from '../services/historyService';
 import { formatDate } from '../utils/formatters';
 import { showToast } from '../components/ui/Toast';
@@ -79,7 +78,6 @@ export function WastePage() {
   const handleDeleteRecord = async () => {
     if (!recordToDelete) return;
     try {
-      const adapter = getAdapter();
       const item = inventory.find(i => i.id === recordToDelete.inventoryItemId);
       if (item) {
         await updateItem({

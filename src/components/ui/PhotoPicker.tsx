@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, ImagePlus, X } from 'lucide-react';
 import { Button } from './Button';
 import { useLanguage } from '../../i18n';
-import { MAX_SOURCE_SIZE_MB, PHOTO_ACCEPT, PhotoErrorCode, validatePhotoFile } from '../../services/photoStorage';
+import { MAX_SOURCE_SIZE_MB, PHOTO_ACCEPT, validatePhotoFile } from '../../services/photoStorage';
 import { photoErrorCodeMessage } from '../../utils/photoErrors';
 
 interface PhotoPickerProps {

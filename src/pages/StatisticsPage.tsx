@@ -1,12 +1,10 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
 import { getRevenueStats, getOrderStats, getPopularBouquets, getPopularFlowers, getEstimatedProfit, getDailyRevenue } from '../services/statisticsService';
 import { getInventoryValue, getLowStockItems } from '../services/inventoryService';
 import { formatCurrency } from '../utils/formatters';
 import { useLanguage } from '../i18n';
 import { useOrders, useBouquets, useInventory } from '../hooks/useStore';
-
-const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
 
 export function StatisticsPage() {
   const { t } = useLanguage();

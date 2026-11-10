@@ -2,7 +2,6 @@
 // Usage: node watchdog.cjs <electronPid>
 
 const { execSync } = require('child_process');
-const net = require('net');
 
 const electronPid = parseInt(process.argv[2], 10);
 

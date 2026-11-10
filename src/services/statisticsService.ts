@@ -1,5 +1,5 @@
 import { format, startOfDay, startOfWeek, startOfMonth, subDays } from 'date-fns';
-import { getOrders, getInventory, getBouquets, getCustomers } from './storage';
+import { getOrders, getInventory, getBouquets } from './storage';
 import { calculateBouquetCost } from './inventoryService';
 import { Order, Bouquet, InventoryItem } from '../types';
 

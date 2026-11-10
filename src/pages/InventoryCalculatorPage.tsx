@@ -37,7 +37,6 @@ export function InventoryCalculatorPage() {
   }, [inventory, reservations]);
 
   const totalValue = rows.reduce((sum, r) => sum + r.value, 0);
-  const itemsWithPrice = rows.filter(r => r.hasPrice).length;
   const itemsWithoutPrice = rows.filter(r => !r.hasPrice && r.available > 0).length;
 
   return (

@@ -1,10 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { AlertTriangle, Check, X, Package, Trash2, Plus } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 import { InventoryReservation, InventoryItem } from '../types';
-import { useInventory, useOrders, useCustomers, getHistoryAdapter } from '../hooks/useStore';
+import { useInventory, useOrders, getHistoryAdapter } from '../hooks/useStore';
 import { releaseReservation, completeReservation, createReservation } from '../services/reservationService';
-import { InventoryStorageAdapter } from '../services/inventoryStorageAdapter';
 import { recordHistory } from '../services/historyService';
 import { showToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -25,7 +23,6 @@ export function ReservationsPage() {
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const { orders } = useOrders();
-  const { customers } = useCustomers();
 
   useEffect(() => {
     loadReservations().then(setReservations);
