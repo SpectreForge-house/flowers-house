@@ -231,6 +231,11 @@ jobs:
           name: android-release-apk
           path: release-assets/android
 
+      - name: Prepare release assets
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mv release-assets/android/app-release.apk "release-assets/android/FlowersHouse-${VERSION}.apk"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
