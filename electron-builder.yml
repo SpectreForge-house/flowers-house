@@ -20,7 +20,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: FlowersHouse-${version}-${arch}.${ext}
 
 nsis:
   oneClick: false
