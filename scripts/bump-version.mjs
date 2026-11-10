@@ -5,7 +5,7 @@
 //
 // Usage: npm run release:bump -- 1.1.4
 
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,14 +43,15 @@ const updated = gradle
 writeFileSync(gradlePath, updated);
 
 try {
-  execFileSync('npm', ['version', next, '--no-git-tag-version'], {
+  // `next` is validated as digits and dots, so it is safe to interpolate.
+  execSync(`npm version ${next} --no-git-tag-version`, {
     cwd: root,
     stdio: 'inherit',
-    shell: true,
   });
-} catch {
+} catch (error) {
   // Restore the Gradle file if npm refused the bump.
   writeFileSync(gradlePath, gradle);
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 
