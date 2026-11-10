@@ -159,11 +159,13 @@ and a **More** sheet for the remaining screens, language and account controls.
 ## Build and package
 
 ```bash
-npm run build       # type-check + production web build into dist/
-npm run pack        # unpacked Electron app in release/
-npm run dist:win    # Windows NSIS installer in release/
-npm run android:apk # debug APK in android/app/build/outputs/apk/debug/
+npm run build           # type-check + production web build into dist/
+npm run pack            # unpacked Electron app in release/
+npm run dist:win        # Windows NSIS installer in release/
+npm run android:apk     # debug APK in android/app/build/outputs/apk/debug/
 npm run android:release # signed release APK in android/app/build/outputs/apk/release/
+npm run release:local   # installer + signed APK, both copied into release/
+npm run release:bump -- 1.1.4 # bump package.json, lockfile and Android version
 ```
 
 ## CI and releases
@@ -176,10 +178,15 @@ Pushing a `v*` tag builds a signed release APK and publishes both the APK and
 the Windows installer on the repository's **Releases** page:
 
 ```bash
-# Update package.json, package-lock.json and android/app/build.gradle first.
+npm run release:bump -- 1.2.0   # update every version field at once
+npm run release:local           # optional: same files in the local release/ folder
+git commit -am "chore: release 1.2.0"
 git tag v1.2.0
 git push origin main --tags
 ```
+
+Local `release/` output is git-ignored. It only changes when `release:local`
+runs; builds published on GitHub are produced by CI from the same version.
 
 The workflow expects these repository secrets:
 

@@ -26,7 +26,9 @@
     "android:open": "npx cap open android",
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "android:release": "npm run android:sync && cd android && gradlew.bat assembleRelease",
-    "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease"
+    "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease",
+    "release:bump": "node scripts/bump-version.mjs",
+    "release:local": "npm run dist:win && npm run android:release && node scripts/collect-release.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
