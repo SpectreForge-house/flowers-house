@@ -1,5 +1,7 @@
 # Flower's House
 
+[![CI](https://github.com/SpectreForge-house/flowers-house/actions/workflows/ci.yml/badge.svg)](https://github.com/SpectreForge-house/flowers-house/actions/workflows/ci.yml)
+
 A CRM for a flower shop: orders, deliveries, inventory, bouquets, customers,
 statistics, history and backups. It runs as a Windows desktop app (Electron), in
 the browser/PWA, and as an Android app (Capacitor). Data is stored locally by
@@ -163,6 +165,35 @@ npm run dist:win    # Windows NSIS installer in release/
 npm run android:apk # debug APK in android/app/build/outputs/apk/debug/
 npm run android:release # signed release APK in android/app/build/outputs/apk/release/
 ```
+
+## CI and releases
+
+GitHub Actions runs lint, type-check, tests and the production build on every
+push and pull request. It also builds a debug APK and, on `main`, the Windows
+installer.
+
+Pushing a `v*` tag builds a signed release APK and publishes both the APK and
+the Windows installer on the repository's **Releases** page:
+
+```bash
+# Update package.json, package-lock.json and android/app/build.gradle first.
+git tag v1.2.0
+git push origin main --tags
+```
+
+The workflow expects these repository secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Supabase project URL injected at build time |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key injected at build time |
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded release keystore |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Release key alias |
+| `ANDROID_KEY_PASSWORD` | Release key password |
+
+Never add a Supabase `service_role` key: only the anon key belongs in a client
+build.
 
 The packaged app serves the built files through a custom `app://bundle/`
 protocol instead of a local web server. It uses the normal BrowserRouter, and
