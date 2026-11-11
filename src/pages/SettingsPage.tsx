@@ -989,14 +989,14 @@ export function SettingsPage() {
                 <Button
                   variant="secondary"
                   onClick={handleOpenRestoreList}
-                  disabled={!autoBackup.folderPath || restoreBusy || cloudMode}
+                  disabled={!autoBackup.folderPath || restoreBusy}
                 >
                   <Upload size={18} />
                   {t.autoBackup.restoreFromList}
                 </Button>
               </div>
               {cloudMode && (
-                <p className="text-text-muted text-xs">{t.cloudCustomers.localOnlyAction}</p>
+                <p className="text-text-muted text-xs">{t.settings.restoreCloudNotice}</p>
               )}
             </div>
           </>
@@ -1019,7 +1019,7 @@ export function SettingsPage() {
             <Download size={18} />
             {t.settings.createBackup}
           </Button>
-          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={cloudMode}>
+          <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
             <Upload size={18} />
             {t.settings.restoreBackup}
           </Button>
@@ -1032,7 +1032,7 @@ export function SettingsPage() {
           />
         </div>
         {cloudMode && (
-          <p className="text-text-muted text-xs mt-3">{t.cloudCustomers.localOnlyAction}</p>
+          <p className="text-text-muted text-xs mt-3">{t.settings.restoreCloudNotice}</p>
         )}
       </div>
       )}

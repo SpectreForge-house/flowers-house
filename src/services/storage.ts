@@ -1,8 +1,9 @@
 import { Customer, InventoryItem, Bouquet, Order, Delivery, InventoryTransaction, Settings, HistoryRecord, InventoryReservation, ClientPurchase, FinanceEntry } from '../types';
 import { sampleCustomers, sampleInventory, sampleBouquets, sampleOrders, sampleDeliveries, sampleTransactions, sampleSettings } from '../data/sampleData';
 import { exportPhotos, exportPhotoIndex, importPhotos, PhotoBackup } from './photoStorage';
-import { getStorageMode } from './storageAdapter';
+import { getStorageMode, setCloudModePreference, setStorageMode } from './storageAdapter';
 import { loadCloudBackupRecords } from './cloudBackupService';
+import { loadCustomThemes, saveCustomThemes, CustomTheme } from '../themes/customTheme';
 
 export const STORAGE_VERSION = 1;
 
@@ -55,6 +56,8 @@ export interface BackupData {
   purchases?: ClientPurchase[];
   /** Owner's finance entries. Optional so old backups still restore. */
   finance?: FinanceEntry[];
+  /** Custom themes made on this device. Optional so old backups still restore. */
+  customThemes?: CustomTheme[];
 }
 
 export const ALL_STORAGE_KEYS = Object.values(STORAGE_KEYS);
@@ -579,7 +582,7 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
 
 function createLocalBackup(): BackupData {
   return {
-    version: '1.0.0',
+    version: '1.1.0',
     storageVersion: STORAGE_VERSION,
     createdAt: new Date().toISOString(),
     customers: loadFromStorage<Customer>(STORAGE_KEYS.customers),
@@ -596,26 +599,36 @@ function createLocalBackup(): BackupData {
     remindersDismissed: getDismissedReminders(),
     purchases: loadFromStorage<ClientPurchase>(STORAGE_KEYS.purchases),
     finance: loadFromStorage<FinanceEntry>(STORAGE_KEYS.finance),
+    customThemes: loadCustomThemes(),
   };
 }
 
 async function createCloudBackup(): Promise<BackupData> {
   const records = await loadCloudBackupRecords();
   return {
-    version: '1.0.0',
+    version: '1.1.0',
     storageVersion: STORAGE_VERSION,
     createdAt: new Date().toISOString(),
     ...records,
     language: getLanguage(),
     remindersRead: getReadReminders(),
     remindersDismissed: getDismissedReminders(),
+    // Themes are a per-device preference, not shop data, so they always come
+    // from local storage even when the shop records live in the cloud.
+    customThemes: loadCustomThemes(),
   };
 }
 
 // Restore
 export async function restoreBackup(backup: BackupData): Promise<void> {
+  // A restore always writes the local copy first. In cloud mode the app then
+  // drops to local storage and stays there after the reload (the cloud
+  // preference is switched to "local"), so the restored data can be reviewed
+  // and only then uploaded to the cloud from the cloud section - a restore
+  // never overwrites the shop's cloud records on its own.
   if (getStorageMode() === 'supabase') {
-    throw new Error('Restore is only available in local storage mode');
+    setCloudModePreference('local');
+    setStorageMode('local');
   }
 
   ALL_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
@@ -635,6 +648,12 @@ export async function restoreBackup(backup: BackupData): Promise<void> {
   localStorage.setItem(STORAGE_KEYS.remindersRead, JSON.stringify(backup.remindersRead || []));
   localStorage.setItem(STORAGE_KEYS.remindersDismissed, JSON.stringify(backup.remindersDismissed || []));
   localStorage.setItem(STORAGE_KEYS.initialized, 'true');
+
+  // Custom themes are optional: old backups do not contain them and must not
+  // wipe the themes already installed on this device.
+  if (Array.isArray(backup.customThemes)) {
+    saveCustomThemes(backup.customThemes);
+  }
 
   // Photo files are written after the keys above were cleared (the photo index
   // is one of them). Backups without photos restore as before.

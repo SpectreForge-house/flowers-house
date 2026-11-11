@@ -642,6 +642,7 @@ const en = {
     restoreConfirmMessage: 'This will replace all current data with the backup data. This action cannot be undone. Continue?',
     invalidBackupFile: 'Invalid backup file format',
     selectBackupFile: 'Select a backup file',
+    restoreCloudNotice: 'Restoring switches this device to local storage. A safety backup is created first; after the restart, upload the restored data back to the cloud from the cloud section.',
   },
   autoBackup: {
     title: 'Automatic Backup',

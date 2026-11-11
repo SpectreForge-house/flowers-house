@@ -289,6 +289,12 @@ Backups:
   `backup-YYYY-MM-DD-HHmm/data.json` plus a copy of the photos folder, and old
   backups are pruned to the configured keep count.
 - Backup settings stay local and are not included in the backup payload.
+- Custom themes are part of the backup payload. Old backups without themes
+  restore the data and leave the themes already installed on the device.
+- In cloud mode a restore first writes the backup into the local copy and
+  switches the device to local storage, so the cloud records are never
+  replaced silently. After the restart the restored data can be uploaded to
+  the cloud from the cloud section in Settings.
 
 ### Electron shell
 
