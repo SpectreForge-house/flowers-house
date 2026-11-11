@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { X, Plus, Trash2, Check } from 'lucide-react';
@@ -9,6 +9,7 @@ import { isCloudActive } from '../../services/storageMode';
 import { recordHistory } from '../../services/historyService';
 import { buildPendingReservations } from '../../services/reservationService';
 import { formatCurrency } from '../../utils/formatters';
+import { todayIso } from '../../utils/clock';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { DiscardChangesDialog } from '../ui/DiscardChangesDialog';
@@ -45,7 +46,8 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
   const [recipientName, setRecipientName] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [today] = useState(() => todayIso());
+  const [deliveryDate, setDeliveryDate] = useState(today);
   const [deliveryTime, setDeliveryTime] = useState('12:00');
   const [items, setItems] = useState<OrderItem[]>([{ bouquetId: '', quantity: 1, price: 0 }]);
   const [deliveryFee, setDeliveryFee] = useState(8);
@@ -61,11 +63,11 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
 
   // Unsaved-changes detection: every field is compared with the value the
   // form was opened with, so a blank form closes without a prompt.
-  const initial = useRef({
+  const [initial] = useState(() => ({
     orderType: initialOrderType,
-    deliveryDate: new Date().toISOString().split('T')[0],
+    deliveryDate: today,
     items: JSON.stringify([{ bouquetId: '', quantity: 1, price: 0 }]),
-  }).current;
+  }));
 
   const isDirty =
     orderType !== initial.orderType ||
@@ -85,17 +87,18 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
     photoFile !== null;
 
   const guard = useCloseGuard({ isDirty, onClose });
+  const { confirming: closeConfirming, requestClose } = guard;
 
   // Escape behaves like the X button: unchanged forms close right away, forms
   // with typed data first ask "Discard changes?".
   useEffect(() => {
-    if (guard.confirming) return;
+    if (closeConfirming) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guard.requestClose();
+      if (e.key === 'Escape') requestClose();
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [guard.confirming, guard.requestClose]);
+  }, [closeConfirming, requestClose]);
 
   useEffect(() => {
     setCustomers(hookCustomers);

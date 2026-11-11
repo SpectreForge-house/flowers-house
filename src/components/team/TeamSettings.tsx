@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Copy, KeyRound, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import { useLanguage } from '../../i18n';
+import { nowMs } from '../../utils/clock';
 import { InviteRole, ShopInvite, ShopMember, UserProfile, UserRole } from '../../types';
 import {
   acceptShopInvite,
@@ -265,7 +266,7 @@ export function TeamSettings({ profile, onRefreshProfile }: TeamSettingsProps) {
     }
   };
 
-  const now = Date.now();
+  const now = nowMs();
   const pendingInvites = invites.filter(invite =>
     !invite.acceptedAt
     && !invite.revokedAt

@@ -6,6 +6,7 @@ import { Customer, ImportantDate, ImportantDateType } from '../types';
 import { buildPurchaseHistory, getPurchaseStats } from '../services/purchaseService';
 import { recordHistory } from '../services/historyService';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { nowIso } from '../utils/clock';
 import { showToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button } from '../components/ui/Button';
@@ -143,7 +144,7 @@ export function CustomersPage() {
     options?: { addBouquet?: boolean },
   ) => {
     const { photoFile, photoRemoved, ...values } = data;
-    const now = new Date().toISOString();
+    const now = nowIso();
     const customer: Customer = {
       ...values,
       id: uuidv4(),
@@ -179,7 +180,7 @@ export function CustomersPage() {
       ...values,
       id: editingCustomer.id,
       createdAt: editingCustomer.createdAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso(),
     };
     try {
       await updateCustomer(updated);
@@ -572,7 +573,7 @@ function CustomerForm({
 
   // Unsaved-changes detection: everything is compared with the values the
   // dialog was opened with (nothing changed -> closing needs no prompt).
-  const initial = useRef({
+  const [initial] = useState(() => ({
     name: customer?.name || '',
     phone: customer?.phone || '',
     email: customer?.email || '',
@@ -580,7 +581,7 @@ function CustomerForm({
     notes: customer?.notes || '',
     preferences: customer?.preferences || '',
     dates: datesKey(customer?.importantDates || []),
-  }).current;
+  }));
 
   const isDirty = useMemo(() => (
     name !== initial.name ||

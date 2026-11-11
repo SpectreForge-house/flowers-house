@@ -3,6 +3,7 @@ import { Truck, Clock, CheckCircle, MapPin, Phone, ExternalLink } from 'lucide-r
 import { Delivery } from '../types';
 import { updateDeliveryStatus } from '../services/deliveryService';
 import { formatDate, getDeliveryStatusColor } from '../utils/formatters';
+import { todayIso } from '../utils/clock';
 import { showToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { useLanguage } from '../i18n';
@@ -11,7 +12,7 @@ import { useDeliveries } from '../hooks/useStore';
 export function DeliveriesPage() {
   const { t } = useLanguage();
   const { deliveries: allDeliveries, refresh: refreshDeliveries, getAdapter: getOrderAdapter } = useDeliveries();
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => todayIso());
 
   const deliveries = useMemo(() => {
     return allDeliveries

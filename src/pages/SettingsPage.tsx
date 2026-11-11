@@ -27,6 +27,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { normalizeStatusSettings } from '../services/clientStatusService';
 import { ClientStatusSettings } from '../types';
 import { isSupabaseAvailable } from '../services/authService';
+import { nowMs } from '../utils/clock';
 import { getStorageMode } from '../services/storageAdapter';
 import { CloudSyncPanel } from '../components/cloud/CloudSyncPanel';
 import { TeamSettings } from '../components/team/TeamSettings';
@@ -202,7 +203,7 @@ export function SettingsPage() {
 
   const nicknameCooldownEnd = getDisplayNameCooldownEnd(profile?.displayNameUpdatedAt ?? null);
   const nicknameCooldownActive =
-    nicknameCooldownEnd !== null && nicknameCooldownEnd.getTime() > Date.now();
+    nicknameCooldownEnd !== null && nicknameCooldownEnd.getTime() > nowMs();
   const nicknameChanged = nickname.trim() !== (profile?.displayName ?? '');
 
   const handleSaveNickname = async () => {

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -55,7 +55,7 @@ export function InventoryPage() {
     return Array.from(cats);
   }, [inventory]);
 
-  const categoryLabelMap: Record<string, string> = {
+  const categoryLabelMap = useMemo<Record<string, string>>(() => ({
     flowers: t.categories.flowers,
     greenery: t.categories.greenery,
     fillers: t.categories.fillers,
@@ -64,9 +64,12 @@ export function InventoryPage() {
     floralSupplies: t.categories.floralSupplies,
     decorations: t.categories.decorations,
     other: t.categories.other,
-  };
+  }), [t]);
 
-  const getCategoryLabel = (cat: string) => categoryLabelMap[cat] || cat;
+  const getCategoryLabel = useCallback(
+    (cat: string) => categoryLabelMap[cat] || cat,
+    [categoryLabelMap],
+  );
 
   const filteredInventory = useMemo(() => {
     let result = [...inventory];
@@ -91,7 +94,7 @@ export function InventoryPage() {
     }
     
     return result;
-  }, [inventory, searchQuery, categoryFilter, showLowStock]);
+  }, [inventory, searchQuery, categoryFilter, showLowStock, getCategoryLabel]);
 
   const lowStockCount = inventory.filter(i => i.quantity <= i.minStock).length;
 

@@ -136,7 +136,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyThemeToDocument(theme, themeId);
-  }, []);
+  }, [theme, themeId]);
 
   return (
     <ThemeContext.Provider

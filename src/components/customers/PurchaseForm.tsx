@@ -13,6 +13,7 @@ import {
   savePhoto,
 } from '../../services/photoStorage';
 import { photoErrorMessage } from '../../utils/photoErrors';
+import { todayIso } from '../../utils/clock';
 import { showToast } from '../ui/Toast';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -50,7 +51,7 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
   const [price, setPrice] = useState(
     purchase ? String(purchase.price) : repeatFrom ? String(repeatFrom.price) : ''
   );
-  const today = new Date().toISOString().split('T')[0];
+  const [today] = useState(() => todayIso());
   // Repeat always starts at today, never at the old purchase date.
   const [date, setDate] = useState(purchase?.date || today);
   const [deliveryAddress, setDeliveryAddress] = useState(
@@ -72,7 +73,7 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
 
   // Unsaved-changes detection: compared with the values the dialog opened
   // with (a new purchase starts empty, so closing it needs no prompt).
-  const initial = useRef({
+  const [initial] = useState(() => ({
     name: purchase?.name || repeatTitle || '',
     composition: purchase?.composition || repeatFrom?.composition || '',
     price: purchase ? String(purchase.price) : repeatFrom ? String(repeatFrom.price) : '',
@@ -85,7 +86,7 @@ export function PurchaseForm({ customer, purchase, repeatFrom, onClose, onSaved 
       ? [...repeatFrom.photos]
       : []
     ).join(','),
-  }).current;
+  }));
 
   const isDirty = useMemo(() => (
     name !== initial.name ||

@@ -11,6 +11,7 @@ import { generateReminders } from '../services/reminderService';
 import { useReminderState } from '../hooks/useReminderState';
 import { dismissBackupWarning, isBackupStale, isBackupWarningDismissed } from '../services/backupService';
 import { formatCurrency, getStatusColor, getDeliveryStatusColor } from '../utils/formatters';
+import { currentDate, todayIso } from '../utils/clock';
 import { CustomerAvatar } from '../components/customers/CustomerAvatar';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useLanguage, type Language } from '../i18n';
@@ -63,7 +64,7 @@ export function Dashboard() {
     );
   }, [inventory, orders, deliveries, reservations, reminderReadIds, reminderDismissedKeys, canViewRevenue]);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIso();
   const todayOrders = orders.filter(o => o.createdAt.startsWith(today) || o.deliveryDate === today);
   const todayRevenue = todayOrders
     .filter(o => o.status !== 'cancelled')
@@ -120,7 +121,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text-primary">{t.dashboard.title}</h1>
         <p className="text-text-muted">
-          {format(new Date(), DATE_PATTERNS[language], { locale: DATE_LOCALES[language] })}
+          {format(currentDate(), DATE_PATTERNS[language], { locale: DATE_LOCALES[language] })}
         </p>
       </div>
 

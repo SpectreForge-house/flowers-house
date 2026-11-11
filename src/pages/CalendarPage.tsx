@@ -4,13 +4,14 @@ import { Delivery, ImportantDate } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { getDeliveryStatusColor } from '../utils/formatters';
+import { currentDate, todayIso } from '../utils/clock';
 import { useOrders, useDeliveries, useCustomers } from '../hooks/useStore';
 import { getClientDatesForMonth } from '../services/clientDatesService';
 
 export function CalendarPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => currentDate());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const { orders } = useOrders();
@@ -25,7 +26,7 @@ export function CalendarPage() {
   const startDay = (firstDayOfMonth.getDay() + 6) % 7; // Monday = 0
   const daysInMonth = lastDayOfMonth.getDate();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIso();
 
   const deliveriesByDate = useMemo(() => {
     const map: Record<string, Delivery[]> = {};
@@ -104,12 +105,11 @@ export function CalendarPage() {
   };
 
   const upcomingDeliveries = useMemo(() => {
-    const now = new Date().toISOString().split('T')[0];
     return deliveries
-      .filter(d => d.scheduledDate >= now && d.status !== 'delivered')
+      .filter(d => d.scheduledDate >= today && d.status !== 'delivered')
       .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.scheduledTime.localeCompare(b.scheduledTime))
       .slice(0, 8);
-  }, [deliveries]);
+  }, [deliveries, today]);
 
   return (
     <div className="space-y-6">

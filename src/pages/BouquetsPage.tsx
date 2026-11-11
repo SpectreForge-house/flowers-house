@@ -289,13 +289,13 @@ function BouquetForm({
 
   // Unsaved-changes detection: everything is compared with the values the
   // dialog was opened with, so an unchanged form closes without a prompt.
-  const initial = useRef({
+  const [initial] = useState(() => ({
     name: bouquet?.name || '',
     description: bouquet?.description || '',
     sellingPrice: bouquet?.sellingPrice || 0,
     photoUrl: bouquet?.photoUrl,
     items: JSON.stringify(bouquet?.items || [{ inventoryItemId: '', quantity: 1 }]),
-  }).current;
+  }));
 
   const isDirty = useMemo(() => (
     name !== initial.name ||
