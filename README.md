@@ -165,8 +165,21 @@ npm run dist:win        # Windows NSIS installer in release/
 npm run android:apk     # debug APK in android/app/build/outputs/apk/debug/
 npm run android:release # signed release APK in android/app/build/outputs/apk/release/
 npm run release:local   # installer + signed APK, both copied into release/
-npm run release:bump -- 1.1.4 # bump package.json, lockfile and Android version
+npm run release:next    # bump to the next allowed version (see below)
 ```
+
+### Versioning rule
+
+The patch number grows by exactly one per release and never goes above 9:
+
+```text
+1.2.0 -> 1.2.1 -> ... -> 1.2.9 -> 1.3.0 -> 1.3.1 -> ... -> 1.3.9 -> 1.4.0
+```
+
+`npm run release:next` always computes that next version and updates
+`package.json`, the lockfile and the Android `versionName`/`versionCode` in one
+step. Passing an explicit version is refused unless it is exactly the next
+allowed one; `--force` exists only for emergency fixes.
 
 ## CI and releases
 
@@ -178,10 +191,11 @@ Pushing a `v*` tag builds a signed release APK and publishes both the APK and
 the Windows installer on the repository's **Releases** page:
 
 ```bash
-npm run release:bump -- 1.2.0   # update every version field at once
+npm run release:next            # e.g. 1.2.0 -> 1.2.1
 npm run release:local           # optional: same files in the local release/ folder
-git commit -am "chore: release 1.2.0"
-git tag v1.2.0
+VER=$(node -p "require('./package.json').version")
+git commit -am "chore: release $VER"
+git tag "v$VER"
 git push origin main --tags
 ```
 

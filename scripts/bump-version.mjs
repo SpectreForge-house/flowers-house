@@ -3,18 +3,45 @@
 //   - package.json / package-lock.json (via `npm version`)
 //   - android/app/build.gradle (versionName + versionCode)
 //
-// Usage: npm run release:bump -- 1.1.4
+// Usage: npm run release:next
+//        npm run release:bump -- <major.minor.patch> [--force]
+//
+// Release rule: the patch number only ever grows by one, up to 9:
+//   1.2.0 -> 1.2.1 -> ... -> 1.2.9 -> 1.3.0 -> 1.3.1 ...
+// `release:next` always picks the allowed next version. Passing an explicit
+// version is rejected unless it is exactly that version (override with --force).
 
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const MAX_PATCH = 9;
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const next = (process.argv[2] ?? '').trim();
+
+function nextVersion(version) {
+  const [major, minor, patch] = version.split('.').map(Number);
+  return patch < MAX_PATCH
+    ? `${major}.${minor}.${patch + 1}`
+    : `${major}.${minor + 1}.0`;
+}
+
+const args = process.argv.slice(2).map((arg) => arg.trim()).filter(Boolean);
+const force = args.includes('--force');
+const requested = args.find((arg) => !arg.startsWith('--')) ?? '';
+const current = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+const allowed = nextVersion(current);
+const next = requested === '' || requested === 'next' ? allowed : requested;
 
 if (!/^\d+\.\d+\.\d+$/.test(next)) {
-  console.error('Usage: npm run release:bump -- <major.minor.patch>');
+  console.error('Usage: npm run release:bump -- <major.minor.patch> [--force]');
+  process.exit(1);
+}
+
+if (!force && next !== allowed) {
+  console.error(`Release rule violation: next version after ${current} must be ${allowed}.`);
+  console.error('Use: npm run release:next');
   process.exit(1);
 }
 
@@ -29,7 +56,6 @@ if (!versionCode || !versionName) {
   process.exit(1);
 }
 
-const current = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 if (current === next) {
   console.error(`Version is already ${next}`);
   process.exit(1);
