@@ -6,7 +6,7 @@ import { Customer, ImportantDate, ImportantDateType } from '../types';
 import { buildPurchaseHistory, getPurchaseStats } from '../services/purchaseService';
 import { recordHistory } from '../services/historyService';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { nowIso } from '../utils/clock';
+import { currentDate, nowIso } from '../utils/clock';
 import { showToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button } from '../components/ui/Button';
@@ -551,6 +551,15 @@ function CustomerForm({
   const phoneRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
 
+  // Quick year picker for important dates: the native date picker requires
+  // scrolling arrow-by-arrow, which is painful for a birthday from decades ago.
+  const yearOptions = useMemo(() => {
+    const currentYear = currentDate().getFullYear();
+    const years: number[] = [];
+    for (let year = currentYear + 10; year >= 1900; year -= 1) years.push(year);
+    return years;
+  }, []);
+
   // The photo is written to disk only when the form is submitted, so simply
   // closing the dialog never leaves orphan files behind.
   const savedPhotos = useOwnerPhotos(customer ? photoOwnerKey('client', customer.id) : '');
@@ -629,6 +638,20 @@ function CustomerForm({
 
   const handleRemoveDate = (id: string) => {
     setImportantDates((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  /**
+   * Changes only the year, keeping the picked day and month. An empty date
+   * starts from today's day/month so the row becomes a valid date at once.
+   */
+  const handleDateYearChange = (id: string, year: string) => {
+    if (!year) return;
+    const current = importantDates.find((d) => d.id === id);
+    const now = currentDate();
+    const monthDay =
+      current?.date?.slice(5) ||
+      `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    handleDateChange(id, { date: `${year}-${monthDay}`, noYear: false });
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -813,6 +836,32 @@ function CustomerForm({
                     >
                       <Trash2 size={16} />
                     </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor={`important-date-year-${d.id}`}
+                      className="text-xs text-text-muted whitespace-nowrap"
+                    >
+                      {t.clientDates.year}
+                    </label>
+                    <select
+                      id={`important-date-year-${d.id}`}
+                      value={d.date ? d.date.slice(0, 4) : ''}
+                      onChange={(e) => handleDateYearChange(d.id, e.target.value)}
+                      disabled={!!d.noYear}
+                      className="flex-1 min-w-0 px-2 py-1.5 bg-card border border-border rounded-lg text-text-primary text-sm disabled:opacity-50"
+                    >
+                      {!d.date && (
+                        <option value="" disabled>
+                          {t.clientDates.yearPlaceholder}
+                        </option>
+                      )}
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex items-center gap-3">
                     <input

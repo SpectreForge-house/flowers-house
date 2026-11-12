@@ -7,6 +7,7 @@ import {
   parseISO,
   startOfMonth,
   startOfWeek,
+  startOfYear,
   subMonths,
 } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
@@ -189,6 +190,58 @@ export function getPresetRange(preset: Exclude<FinancePeriodPreset, 'custom'>, n
     start: toDateKey(startOfMonth(previousMonth)),
     end: toDateKey(endOfMonth(previousMonth)),
   };
+}
+
+/** From the first day of the current year up to today. */
+export function getYearRange(now: Date = new Date()): FinanceRange {
+  return { start: toDateKey(startOfYear(now)), end: todayKey(now) };
+}
+
+/**
+ * From the earliest entry to today (or the latest future-dated entry).
+ * An empty cash-book falls back to today so the range stays valid.
+ */
+export function getAllTimeRange(
+  entries: FinanceEntry[],
+  now: Date = new Date(),
+): FinanceRange {
+  const today = todayKey(now);
+  if (entries.length === 0) return { start: today, end: today };
+
+  let start = entries[0].date;
+  let end = entries[0].date;
+  for (const entry of entries) {
+    if (entry.date < start) start = entry.date;
+    if (entry.date > end) end = entry.date;
+  }
+
+  return { start, end: end > today ? end : today };
+}
+
+/**
+ * Stable key of the entry's category, used by the Finance tab filters.
+ * Income always collapses into a single 'income' bucket; custom expense
+ * categories are keyed by their label so two "Marketing" entries match.
+ */
+export function financeCategoryKey(entry: FinanceEntry): string {
+  if (entry.type === 'income') return 'income';
+
+  const category = entry.category ?? 'other';
+  if (category === 'other') {
+    const label = entry.categoryLabel?.trim();
+    if (label) return `expense:other:${label.toLowerCase()}`;
+  }
+
+  return `expense:${category}`;
+}
+
+/** True when the entry belongs to one of the keys (an empty list means all). */
+export function matchesFinanceCategories(entry: FinanceEntry, keys: string[]): boolean {
+  if (keys.length === 0) return true;
+  // 'expense' is a shortcut for every expense category at once.
+  if (keys.includes('expense') && entry.type === 'expense') return true;
+  if (keys.includes('income') && entry.type === 'income') return true;
+  return keys.includes(financeCategoryKey(entry));
 }
 
 /** Number of calendar days in the range, inclusive. At least 1. */

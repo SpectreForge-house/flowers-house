@@ -6,13 +6,17 @@ import {
   buildFinanceSeries,
   createFinanceEntry,
   daysInRange,
+  financeCategoryKey,
+  getAllTimeRange,
   getCustomCategories,
   getExpenseBreakdown,
   getFinanceSummary,
   getMonthRange,
   getPresetRange,
+  getYearRange,
   groupEntriesByDate,
   hasIncomeEntry,
+  matchesFinanceCategories,
   normaliseCustomRange,
   pickGranularity,
   updateFinanceEntryValues,
@@ -98,6 +102,63 @@ describe('finance periods', () => {
   it('switches long ranges to weekly buckets', () => {
     expect(pickGranularity({ start: '2026-03-01', end: '2026-03-31' })).toBe('day');
     expect(pickGranularity({ start: '2026-01-01', end: '2026-03-31' })).toBe('week');
+  });
+
+  it('builds the current year and all-time ranges', () => {
+    expect(getYearRange(now)).toEqual({ start: '2026-01-01', end: '2026-03-18' });
+
+    expect(
+      getAllTimeRange(
+        [
+          entry({ type: 'income', date: '2024-05-10', amount: 10 }),
+          entry({ type: 'expense', date: '2026-03-10', amount: 5, category: 'rent' }),
+        ],
+        now,
+      ),
+    ).toEqual({ start: '2024-05-10', end: '2026-03-18' });
+
+    expect(getAllTimeRange([], now)).toEqual({ start: '2026-03-18', end: '2026-03-18' });
+  });
+});
+
+describe('finance category filters', () => {
+  it('collapses income into one bucket and keys custom expenses by label', () => {
+    expect(financeCategoryKey(entry({ type: 'income', date: '2026-03-02', amount: 1 }))).toBe(
+      'income',
+    );
+    expect(
+      financeCategoryKey(
+        entry({ type: 'expense', date: '2026-03-02', amount: 1, category: 'rent' }),
+      ),
+    ).toBe('expense:rent');
+    expect(
+      financeCategoryKey(
+        entry({
+          type: 'expense',
+          date: '2026-03-02',
+          amount: 1,
+          category: 'other',
+          categoryLabel: 'Marketing',
+        }),
+      ),
+    ).toBe('expense:other:marketing');
+    expect(
+      financeCategoryKey(
+        entry({ type: 'expense', date: '2026-03-02', amount: 1, category: 'other' }),
+      ),
+    ).toBe('expense:other');
+  });
+
+  it('matches the selected keys, treating an empty list as "all"', () => {
+    const income = entry({ type: 'income', date: '2026-03-02', amount: 100 });
+    const rent = entry({ type: 'expense', date: '2026-03-02', amount: 10, category: 'rent' });
+
+    expect(matchesFinanceCategories(income, [])).toBe(true);
+    expect(matchesFinanceCategories(income, ['income'])).toBe(true);
+    expect(matchesFinanceCategories(rent, ['income'])).toBe(false);
+    expect(matchesFinanceCategories(rent, ['expense'])).toBe(true);
+    expect(matchesFinanceCategories(income, ['expense'])).toBe(false);
+    expect(matchesFinanceCategories(rent, ['expense:rent', 'income'])).toBe(true);
   });
 });
 
