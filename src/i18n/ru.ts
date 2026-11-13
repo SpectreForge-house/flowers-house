@@ -532,6 +532,8 @@ const ru = {
     totalExpenses: 'Общая сумма расходов',
     profit: 'Чистая прибыль',
     avgDailyIncome: 'Средняя выручка в день',
+    balance: 'Баланс',
+    balanceHint: 'выручка минус расходы',
     periods: {
       week: 'Текущая неделя',
       month: 'Текущий месяц',

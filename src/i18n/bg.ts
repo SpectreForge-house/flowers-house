@@ -532,6 +532,8 @@ const bg = {
     totalExpenses: 'Общо разходи',
     profit: 'Нетна печалба',
     avgDailyIncome: 'Среден дневен приход',
+    balance: 'Баланс',
+    balanceHint: 'приход минус разходи',
     periods: {
       week: 'Текуща седмица',
       month: 'Текущ месец',

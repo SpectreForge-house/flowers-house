@@ -532,6 +532,8 @@ const en = {
     totalExpenses: 'Total expenses',
     profit: 'Net profit',
     avgDailyIncome: 'Average daily revenue',
+    balance: 'Balance',
+    balanceHint: 'revenue minus expenses',
     periods: {
       week: 'This week',
       month: 'This month',

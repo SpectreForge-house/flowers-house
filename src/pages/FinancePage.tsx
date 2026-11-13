@@ -10,6 +10,7 @@ import {
   Filter,
   Pencil,
   RotateCcw,
+  Scale,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -270,6 +271,9 @@ export function FinancePage() {
   }, [cloudFinanceIds, localEntries]);
 
   const formatMoney = (value: number) => formatCurrency(value, currency);
+  // Balance always shows its sign, so a shortfall reads as "-EUR 400.00".
+  const formatSignedMoney = (value: number) =>
+    `${value < 0 ? '-' : '+'}${formatCurrency(Math.abs(value), currency)}`;
 
   /** Drops a trailing ".00" so the small calendar cells stay readable. */
   const formatCellMoney = (value: number) =>
@@ -427,7 +431,13 @@ export function FinancePage() {
     }
   };
 
-  const summaryCards = [
+  const summaryCards: {
+    label: string;
+    value: string;
+    icon: typeof TrendingUp;
+    color: string;
+    hint?: string;
+  }[] = [
     {
       label: t.finance.grossRevenue,
       value: formatMoney(rangeSummary.income),
@@ -451,6 +461,13 @@ export function FinancePage() {
       value: formatMoney(rangeSummary.avgDailyIncome),
       icon: ArrowUpRight,
       color: 'text-accent-light',
+    },
+    {
+      label: t.finance.balance,
+      value: formatSignedMoney(rangeSummary.profit),
+      icon: Scale,
+      color: rangeSummary.profit >= 0 ? 'text-status-success' : 'text-status-danger',
+      hint: t.finance.balanceHint,
     },
   ];
 
@@ -638,7 +655,7 @@ export function FinancePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {summaryCards.map((card) => (
           <div key={card.label} className="bg-card rounded-lg border border-border p-4">
             <div className="flex items-center justify-between">
@@ -647,6 +664,7 @@ export function FinancePage() {
                 <p className={`text-xl sm:text-2xl font-bold mt-1 truncate ${card.color}`}>
                   {card.value}
                 </p>
+                {card.hint ? <p className="text-xs text-text-muted mt-0.5">{card.hint}</p> : null}
               </div>
               <card.icon size={22} className={`${card.color} shrink-0`} />
             </div>
