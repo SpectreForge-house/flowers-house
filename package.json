@@ -1,7 +1,7 @@
 {
   "name": "flower-shop",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Flower's House - orders, inventory, deliveries and customers for a flower shop",
   "author": "Flower's House",
   "type": "module",
