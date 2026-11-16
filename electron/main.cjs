@@ -428,6 +428,23 @@ function isNewerVersion(remote, current) {
   return false;
 }
 
+// github-provider returns the release notes as rendered HTML; the dialog is a
+// plain-text <pre>, so tags are dropped and common entities are decoded.
+function htmlToText(html) {
+  return String(html)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function registerUpdateIpc() {
   let updater = null;
   let eventsReady = false;
@@ -485,9 +502,9 @@ function registerUpdateIpc() {
     }
     const primary = (info.files || []).find((file) => file && file.sha512) || (info.files || [])[0] || {};
     const notes = Array.isArray(info.releaseNotes)
-      ? info.releaseNotes.map((entry) => (entry && entry.note) || '').filter(Boolean).join('\n\n')
+      ? info.releaseNotes.map((entry) => htmlToText((entry && entry.note) || '')).filter(Boolean).join('\n\n')
       : typeof info.releaseNotes === 'string'
-        ? info.releaseNotes
+        ? htmlToText(info.releaseNotes)
         : '';
     return {
       supported: true,
