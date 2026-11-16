@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Save, Clock, Download, Upload, Shield, Cloud, HardDrive, FolderOpen, Award, User, Bell, Wallet } from 'lucide-react';
+import { Save, Clock, Download, Upload, Shield, Cloud, HardDrive, FolderOpen, Award, User, Bell, Wallet, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSettings, getHistoryAdapter } from '../hooks/useStore';
 import { showToast } from '../components/ui/Toast';
@@ -24,6 +24,7 @@ import {
   saveAutoBackupSettings,
 } from '../services/backupService';
 import { useAuth } from '../contexts/AuthContext';
+import { useUpdate } from '../contexts/UpdateContext';
 import { normalizeStatusSettings } from '../services/clientStatusService';
 import { ClientStatusSettings } from '../types';
 import { isSupabaseAvailable } from '../services/authService';
@@ -57,6 +58,7 @@ export function SettingsPage() {
   const { t, tAddress } = useLanguage();
   const { user } = useAuth();
   const { profile, can, refresh, role } = usePermissions();
+  const { open: openUpdates, currentVersion } = useUpdate();
   const canEditShopInfo = can('editShopInfo');
   const canEditClientStatus = role === 'owner';
   const canManageCloud = can('manageCloud');
@@ -1005,6 +1007,25 @@ export function SettingsPage() {
         )}
       </div>
       )}
+
+      <div className="bg-card rounded-lg border border-border p-6">
+        <div className="flex items-start gap-2 mb-4">
+          <RefreshCw size={20} className="text-accent-green-light shrink-0 mt-0.5" />
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">{t.updates.sectionTitle}</h2>
+            <p className="text-text-secondary text-sm">{t.updates.sectionDescription}</p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <Button variant="secondary" onClick={openUpdates}>
+            <RefreshCw size={18} />
+            {t.updates.checkNow}
+          </Button>
+          <p className="text-text-muted text-xs">
+            {t.updates.currentVersion}: v{currentVersion}
+          </p>
+        </div>
+      </div>
 
       {canBackup && (
       <div className="bg-card rounded-lg border border-border p-6">

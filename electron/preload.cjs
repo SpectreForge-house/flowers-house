@@ -20,3 +20,22 @@ contextBridge.exposeInMainWorld('flowerBackup', {
   read: (folderPath, dirName) => ipcRenderer.invoke('backup:read', folderPath, dirName),
   restorePhotos: (folderPath, dirName) => ipcRenderer.invoke('backup:restorePhotos', folderPath, dirName),
 });
+
+// Auto-update bridge (electron-updater runs in the main process). The renderer
+// only triggers check/download/install and listens for progress; it never gets
+// filesystem or process access.
+const subscribe = (channel, callback) => {
+  const handler = (_event, payload) => callback(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+};
+
+contextBridge.exposeInMainWorld('flowerUpdater', {
+  getVersion: () => ipcRenderer.invoke('update:version'),
+  check: () => ipcRenderer.invoke('update:check'),
+  download: () => ipcRenderer.invoke('update:download'),
+  install: () => ipcRenderer.invoke('update:install'),
+  onProgress: (callback) => subscribe('update:progress', callback),
+  onDownloaded: (callback) => subscribe('update:downloaded', callback),
+  onError: (callback) => subscribe('update:error', callback),
+});

@@ -10,6 +10,9 @@ out/
 coverage/
 *.tsbuildinfo
 
+# Generated updater bundle (see scripts/build-updater.mjs)
+electron/updater.bundle.cjs
+
 # Logs
 logs/
 *.log

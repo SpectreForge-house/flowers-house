@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   columnErrors: new Map<string, string>(),
   rpcErrors: new Map<string, { message: string; code?: string }>(),
   bucketError: null as { message: string; code?: string } | null,
-  schemaVersion: '13',
+  schemaVersion: '15',
 }));
 
 vi.mock('../lib/supabase', () => ({
@@ -38,7 +38,7 @@ beforeEach(() => {
   mocks.columnErrors.clear();
   mocks.rpcErrors.clear();
   mocks.bucketError = null;
-  mocks.schemaVersion = '13';
+  mocks.schemaVersion = '15';
   mocks.rpc.mockImplementation(async (fn: string) => ({
     data: fn === 'current_shop_id' ? 'shop-1' : 'owner',
     error: mocks.rpcErrors.get(fn) ?? null,
@@ -75,7 +75,7 @@ describe('checkCloudHealth', () => {
     const report = await checkCloudHealth();
 
     expect(report.ok).toBe(true);
-    expect(report.checks).toHaveLength(11);
+    expect(report.checks).toHaveLength(12);
     expect(report.checks.every(check => check.ok)).toBe(true);
   });
 
@@ -144,7 +144,19 @@ describe('checkCloudHealth', () => {
     expect(fields?.migration).toBe('012');
   });
 
-  it('reports an outdated schema version from 013', async () => {
+  it('reports a missing purchase delivery address from migration 013', async () => {
+    mocks.columnErrors.set('client_purchases.delivery_address', 'column does not exist');
+
+    const report = await checkCloudHealth();
+    const fields = report.checks.find(check => check.id === 'purchaseFields');
+
+    expect(report.ok).toBe(false);
+    expect(fields?.ok).toBe(false);
+    expect(fields?.missing).toContain('client_purchases.delivery_address');
+    expect(fields?.migration).toBe('013');
+  });
+
+  it('reports an outdated schema version from 015', async () => {
     mocks.schemaVersion = '10';
 
     const report = await checkCloudHealth();
@@ -153,6 +165,6 @@ describe('checkCloudHealth', () => {
     expect(report.ok).toBe(false);
     expect(schema?.ok).toBe(false);
     expect(schema?.missing).toContain('app_meta.schema_version');
-    expect(schema?.migration).toBe('013');
+    expect(schema?.migration).toBe('015');
   });
 });

@@ -39,4 +39,26 @@ interface Window {
     read(folderPath: string, dirName: string): Promise<string>;
     restorePhotos(folderPath: string, dirName: string): Promise<boolean>;
   };
+  // Auto-update bridge (see electron/preload.cjs and src/services/updateService.ts).
+  flowerUpdater?: {
+    getVersion(): Promise<string>;
+    check(): Promise<{
+      supported: boolean;
+      available?: boolean;
+      version?: string;
+      notes?: string;
+      sizeBytes?: number;
+      reason?: string;
+    }>;
+    download(): Promise<boolean>;
+    install(): Promise<boolean>;
+    onProgress(callback: (progress: {
+      percent: number;
+      transferred: number;
+      total: number;
+      bytesPerSecond: number;
+    }) => void): () => void;
+    onDownloaded(callback: (info: { version: string }) => void): () => void;
+    onError(callback: (info: { message: string }) => void): () => void;
+  };
 }

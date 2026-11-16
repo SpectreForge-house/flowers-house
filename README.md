@@ -88,7 +88,7 @@ features remain hidden. Restart the dev server after changing `.env`.
 ### Supabase setup
 
 1. Create a project at <https://supabase.com>.
-2. Run the migrations in `supabase/migrations/` in order (`001` through `014`)
+2. Run the migrations in `supabase/migrations/` in order (`001` through `015`)
    in the Supabase SQL Editor. See [Supabase backend](#supabase-backend) for the
    migration list.
 3. Put the project URL and anon key into `.env` and restart the dev server.
@@ -122,6 +122,32 @@ watchdog process also cleans up the server if Electron exits unexpectedly.
 The launchers resolve the project directory from their own location, so the
 folder can be moved without editing them. They require `npm install` and run the
 app from source; use the installer build for a standalone desktop app.
+
+## In-app updates
+
+The installed app checks GitHub Releases and offers the new version itself, so
+no manual APK forwarding is needed.
+
+- The repository must stay **public**: the renderer calls the GitHub REST API
+  without a token. `electron-builder.yml` publishes `latest.yml` for the desktop
+  updater and CI uploads it next to the installer.
+- **Windows**: `electron-updater` (bundled into `electron/updater.bundle.cjs` by
+  `scripts/build-updater.mjs`) reads `latest.yml`, downloads the NSIS installer,
+  verifies its SHA-512 and reinstalls silently. The app reopens on the new
+  version, user data is untouched.
+- **Android**: the `ApkUpdater` Capacitor plugin
+  (`android/app/src/main/java/com/flowershouse/app/ApkUpdaterPlugin.java`)
+  downloads the release APK with `DownloadManager`, compares its SHA-256 with
+  the digest GitHub publishes for the asset and opens the system installer
+  through `FileProvider`. Android always asks for one confirmation and needs
+  `REQUEST_INSTALL_PACKAGES` ("Install unknown apps") for Flower's House.
+- **Web/PWA**: updates arrive with the next page load; the dialog only offers a
+  link to the releases page.
+
+The shared logic lives in `src/services/updateService.ts`, the once-a-day check
+and dialog in `src/contexts/UpdateContext.tsx` and
+`src/components/updates/UpdateDialog.tsx`. The check runs at most once every 24
+hours; **Settings → Updates** has a manual "Check for updates" button.
 
 ## Android app
 
@@ -377,6 +403,7 @@ Apply the migrations in order:
 | `012_inventory_intake_fields.sql` | Supplier, SKU, pack note and notes on inventory items |
 | `013_purchase_delivery_address.sql` | Optional delivery address on manually added client purchases |
 | `014_finance_entries.sql` | Owner-only finance cash-book table, RLS and realtime |
+| `015_delivery_address_catchup.sql` | Re-asserts `client_purchases.delivery_address` for deployments that applied 014 before 013 |
 
 Shop data is scoped by `shop_id` and protected by RLS; profile, reminder and
 app-meta rows use their own user/owner policies. Owners can invite managers and

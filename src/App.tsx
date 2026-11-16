@@ -8,6 +8,8 @@ import { LanguageProvider } from './i18n';
 import { AuthProvider } from './contexts/AuthContext';
 import { PermissionsProvider } from './contexts/PermissionsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { UpdateProvider } from './contexts/UpdateContext';
+import { UpdateDialog } from './components/updates/UpdateDialog';
 import { Layout } from './components/layout/Layout';
 import { RequirePermission } from './components/auth/RequirePermission';
 
@@ -44,34 +46,37 @@ function App() {
 
   return (
     <LanguageProvider>
-      <AuthProvider>
-        <PermissionsProvider>
-          <ThemeProvider>
-            <Router>
-              <Routes>
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="orders" element={<OrdersPage />} />
-                  <Route path="customers" element={<CustomersPage />} />
-                  <Route path="inventory" element={<InventoryPage />} />
-                  <Route path="inventory/waste" element={<WastePage />} />
-                  <Route path="inventory/calculator" element={<InventoryCalculatorPage />} />
-                  <Route path="bouquets" element={<BouquetsPage />} />
-                  <Route path="deliveries" element={<DeliveriesPage />} />
-                  <Route path="calendar" element={<CalendarPage />} />
-                  <Route path="reservations" element={<ReservationsPage />} />
-                  <Route path="history" element={<HistoryPage />} />
-                  <Route path="statistics" element={<RequirePermission permission="viewStatistics"><StatisticsPage /></RequirePermission>} />
-                  <Route path="finance" element={<RequirePermission permission="manageFinance"><FinancePage /></RequirePermission>} />
-                  <Route path="settings" element={<RequirePermission permission="manageSettings"><SettingsPage /></RequirePermission>} />
-                  <Route path="themes" element={<ThemesPage />} />
-                </Route>
-              </Routes>
-            </Router>
-          </ThemeProvider>
-        </PermissionsProvider>
-      </AuthProvider>
+      <UpdateProvider>
+        <AuthProvider>
+          <PermissionsProvider>
+            <ThemeProvider>
+              <Router>
+                <Routes>
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="orders" element={<OrdersPage />} />
+                    <Route path="customers" element={<CustomersPage />} />
+                    <Route path="inventory" element={<InventoryPage />} />
+                    <Route path="inventory/waste" element={<WastePage />} />
+                    <Route path="inventory/calculator" element={<InventoryCalculatorPage />} />
+                    <Route path="bouquets" element={<BouquetsPage />} />
+                    <Route path="deliveries" element={<DeliveriesPage />} />
+                    <Route path="calendar" element={<CalendarPage />} />
+                    <Route path="reservations" element={<ReservationsPage />} />
+                    <Route path="history" element={<HistoryPage />} />
+                    <Route path="statistics" element={<RequirePermission permission="viewStatistics"><StatisticsPage /></RequirePermission>} />
+                    <Route path="finance" element={<RequirePermission permission="manageFinance"><FinancePage /></RequirePermission>} />
+                    <Route path="settings" element={<RequirePermission permission="manageSettings"><SettingsPage /></RequirePermission>} />
+                    <Route path="themes" element={<ThemesPage />} />
+                  </Route>
+                </Routes>
+              </Router>
+              <UpdateDialog />
+            </ThemeProvider>
+          </PermissionsProvider>
+        </AuthProvider>
+      </UpdateProvider>
     </LanguageProvider>
   );
 }

@@ -12,6 +12,7 @@ export type CloudHealthCheckId =
   | 'rlsHardening'
   | 'teamInvites'
   | 'inventoryFields'
+  | 'purchaseFields'
   | 'financeTable'
   | 'schemaVersion';
 
@@ -165,10 +166,10 @@ async function probeSchemaVersion(): Promise<{ missing: string[]; message?: stri
   }
 
   const version = Number(data?.value);
-  if (!data || !Number.isFinite(version) || version < 13) {
+  if (!data || !Number.isFinite(version) || version < 15) {
     return {
       missing: ['app_meta.schema_version'],
-      message: data ? `Schema version ${data.value}, expected 13` : 'Schema version is not set',
+      message: data ? `Schema version ${data.value}, expected 15` : 'Schema version is not set',
     };
   }
 
@@ -200,7 +201,7 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
   await profileReady;
   const shopId = await getShopId();
 
-  const [base, parity, customerDates, settingsParity, profileFields, photoBucket, rlsHardening, teamInvites, inventoryFields, financeTable, schemaVersion] = await Promise.all([
+  const [base, parity, customerDates, settingsParity, profileFields, photoBucket, rlsHardening, teamInvites, inventoryFields, purchaseFields, financeTable, schemaVersion] = await Promise.all([
     missingTables(BASE_TABLES),
     missingTables(PARITY_TABLES),
     missingColumns('customers', ['important_dates']),
@@ -210,6 +211,7 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
     probeRlsHelpers(),
     probeTeamInvites(),
     missingColumns('inventory_items', ['supplier', 'supplier_sku', 'pack_note', 'notes']),
+    missingColumns('client_purchases', ['delivery_address']),
     missingTables(['finance_entries']),
     probeSchemaVersion(),
   ]);
@@ -224,8 +226,9 @@ export async function checkCloudHealth(): Promise<CloudHealthReport> {
     tableCheck('rlsHardening', '007', rlsHardening),
     tableCheck('teamInvites', '008', teamInvites),
     tableCheck('inventoryFields', '012', inventoryFields),
+    tableCheck('purchaseFields', '013', purchaseFields),
     tableCheck('financeTable', '014', financeTable),
-    tableCheck('schemaVersion', '013', schemaVersion),
+    tableCheck('schemaVersion', '015', schemaVersion),
   ];
 
   return {

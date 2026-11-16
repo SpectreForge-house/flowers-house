@@ -1,7 +1,7 @@
 {
   "name": "flower-shop",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Flower's House - orders, inventory, deliveries and customers for a flower shop",
   "author": "Flower's House",
   "type": "module",
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/build-updater.mjs",
     "preview": "vite preview",
     "lint": "oxlint src electron",
     "typecheck": "tsc -b --pretty false",
@@ -40,6 +40,7 @@
     "@capacitor/share": "^8.0.3",
     "@supabase/supabase-js": "^2.119.0",
     "date-fns": "^3.6.0",
+    "electron-updater": "^6.8.11",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -56,6 +57,7 @@
     "autoprefixer": "^10.6.2",
     "electron": "^33.4.11",
     "electron-builder": "^26.18.0",
+    "esbuild": "^0.21.5",
     "oxlint": "^1.93.0",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.15",

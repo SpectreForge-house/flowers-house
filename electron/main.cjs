@@ -411,6 +411,113 @@ function registerBackupIpc() {
 registerBackupIpc();
 
 // ---------------------------------------------------------------------------
+// Windows auto-update. electron-updater reads latest.yml from the newest
+// GitHub release of the public repository configured under `publish` in
+// electron-builder.yml. Disabled in dev, where app-update.yml does not exist.
+// ---------------------------------------------------------------------------
+function isNewerVersion(remote, current) {
+  const toParts = (value) => String(value).split('.').map((part) => parseInt(part, 10) || 0);
+  const next = toParts(remote);
+  const currentParts = toParts(current);
+  for (let i = 0; i < Math.max(next.length, currentParts.length, 3); i += 1) {
+    const a = next[i] || 0;
+    const b = currentParts[i] || 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return false;
+}
+
+function registerUpdateIpc() {
+  let updater = null;
+  let eventsReady = false;
+
+  const getUpdater = () => {
+    if (!updater) {
+      // Bundled by scripts/build-updater.mjs so the installer does not need a
+      // node_modules tree (see electron-builder.yml `files`).
+      updater = require('./updater.bundle.cjs').autoUpdater;
+      updater.autoDownload = false;
+      updater.autoInstallOnAppQuit = false;
+    }
+    return updater;
+  };
+
+  const send = (channel, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  };
+
+  const ensureEvents = () => {
+    if (eventsReady) return;
+    const instance = getUpdater();
+    eventsReady = true;
+    instance.on('download-progress', (progress) => {
+      send('update:progress', {
+        percent: Math.max(0, Math.min(100, Number(progress?.percent) || 0)),
+        transferred: Number(progress?.transferred) || 0,
+        total: Number(progress?.total) || 0,
+        bytesPerSecond: Number(progress?.bytesPerSecond) || 0,
+      });
+    });
+    instance.on('update-downloaded', (info) => {
+      send('update:downloaded', {
+        version: (info && info.version) || (instance.currentVersion && instance.currentVersion.version) || '',
+      });
+    });
+    instance.on('error', (error) => {
+      send('update:error', { message: (error && error.message) || String(error) });
+    });
+  };
+
+  ipcMain.handle('update:version', () => app.getVersion());
+
+  ipcMain.handle('update:check', async () => {
+    if (!app.isPackaged) return { supported: false, reason: 'dev' };
+    const instance = getUpdater();
+    ensureEvents();
+    const result = await instance.checkForUpdates();
+    const info = result && result.updateInfo;
+    const current = (instance.currentVersion && instance.currentVersion.version) || app.getVersion();
+    if (!info || !isNewerVersion(info.version, current)) {
+      return { supported: true, available: false, version: current };
+    }
+    const primary = (info.files || []).find((file) => file && file.sha512) || (info.files || [])[0] || {};
+    const notes = Array.isArray(info.releaseNotes)
+      ? info.releaseNotes.map((entry) => (entry && entry.note) || '').filter(Boolean).join('\n\n')
+      : typeof info.releaseNotes === 'string'
+        ? info.releaseNotes
+        : '';
+    return {
+      supported: true,
+      available: true,
+      version: info.version,
+      notes,
+      sizeBytes: Number(primary.size) || 0,
+    };
+  });
+
+  ipcMain.handle('update:download', async () => {
+    if (!app.isPackaged) throw new Error('Updates are only available in the installed app');
+    const instance = getUpdater();
+    ensureEvents();
+    await instance.downloadUpdate();
+    return true;
+  });
+
+  ipcMain.handle('update:install', () => {
+    if (!app.isPackaged) return false;
+    const instance = getUpdater();
+    // Let the IPC reply reach the renderer before the app quits.
+    setTimeout(() => instance.quitAndInstall(true, true), 250);
+    return true;
+  });
+}
+
+registerUpdateIpc();
+
+// ---------------------------------------------------------------------------
 // Production renderer protocol. Files are served from dist/ through app://,
 // with an index.html fallback for client-side routes.
 // ---------------------------------------------------------------------------

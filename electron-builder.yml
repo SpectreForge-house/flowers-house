@@ -11,6 +11,14 @@ files:
   - package.json
   - "!node_modules/**/*"
 
+# Auto-update feed. The renderer asks electron-updater to read latest.yml from
+# the newest GitHub release of this repository (it must stay public).
+publish:
+  provider: github
+  owner: SpectreForge-house
+  repo: flowers-house
+  releaseType: release
+
 asar: true
 npmRebuild: false
 
