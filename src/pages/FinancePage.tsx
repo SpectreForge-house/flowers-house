@@ -270,10 +270,12 @@ export function FinancePage() {
     return localEntries.filter((entry) => !cloudFinanceIds.has(entry.id));
   }, [cloudFinanceIds, localEntries]);
 
-  const formatMoney = (value: number) => formatCurrency(value, currency);
+  const formatMoney = (value: number) =>
+    // A shortfall reads "-€400.00", not "€-400.00".
+    value < 0 ? `\u2212${formatCurrency(Math.abs(value), currency)}` : formatCurrency(value, currency);
   // Balance always shows its sign, so a shortfall reads as "-EUR 400.00".
   const formatSignedMoney = (value: number) =>
-    `${value < 0 ? '-' : '+'}${formatCurrency(Math.abs(value), currency)}`;
+    `${value < 0 ? '\u2212' : '+'}${formatCurrency(Math.abs(value), currency)}`;
 
   /** Drops a trailing ".00" so the small calendar cells stay readable. */
   const formatCellMoney = (value: number) =>

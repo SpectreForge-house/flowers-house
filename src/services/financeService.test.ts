@@ -56,6 +56,20 @@ describe('finance summary', () => {
     expect(summary.avgDailyIncome).toBe(50.17);
   });
 
+  it('keeps a negative profit when expenses are higher than income', () => {
+    const summary = getFinanceSummary(
+      [
+        entry({ type: 'income', date: '2026-03-02', amount: 2000 }),
+        entry({ type: 'expense', date: '2026-03-02', amount: 2400, category: 'purchase' }),
+      ],
+      { start: '2026-03-02', end: '2026-03-02' },
+    );
+
+    expect(summary.income).toBe(2000);
+    expect(summary.expense).toBe(2400);
+    expect(summary.profit).toBe(-400);
+  });
+
   it('returns zeros for an empty range', () => {
     const summary = getFinanceSummary([], { start: '2026-03-02', end: '2026-03-04' });
     expect(summary).toEqual({
@@ -270,6 +284,19 @@ describe('finance month calendar', () => {
       days: 30,
       entryCount: 3,
     });
+  });
+
+  it('marks a day whose expenses beat the income as a negative profit', () => {
+    const entries = [
+      entry({ type: 'income', date: '2026-11-05', amount: 2000 }),
+      entry({ type: 'expense', date: '2026-11-05', amount: 2400, category: 'purchase' }),
+    ];
+
+    const grid = buildFinanceMonthGrid(entries, new Date(2026, 10, 15));
+    const day = grid.days.find(cell => cell.key === '2026-11-05');
+
+    expect(day).toMatchObject({ income: 2000, expense: 2400, profit: -400 });
+    expect(grid.summary).toMatchObject({ income: 2000, expense: 2400, profit: -400 });
   });
 
   it('marks today', () => {

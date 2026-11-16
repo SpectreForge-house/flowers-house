@@ -139,9 +139,19 @@ export function updateFinanceEntryValues(
   };
 }
 
+/** Rounds a positive money amount to cents. Owner-typed amounts are never negative. */
 function roundMoney(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.round(Math.max(0, value) * 100) / 100;
+}
+
+/**
+ * Rounds to cents and keeps the sign: profit and balance go negative when the
+ * expenses of a period are higher than its income.
+ */
+function roundSignedMoney(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100) / 100;
 }
 
 /** Newest first, then newest edit first. */
@@ -284,7 +294,7 @@ export function getFinanceSummary(entries: FinanceEntry[], range: FinanceRange):
   return {
     income,
     expense,
-    profit: roundMoney(income - expense),
+    profit: roundSignedMoney(income - expense),
     avgDailyIncome: days > 0 ? roundMoney(income / days) : 0,
     days,
     entryCount: inRange.length,
@@ -379,7 +389,7 @@ export function buildFinanceMonthGrid(
       isToday: key === today,
       income,
       expense,
-      profit: roundMoney(income - expense),
+      profit: roundSignedMoney(income - expense),
       entryCount: dayEntries.length,
     };
   });
@@ -419,7 +429,7 @@ function finishBucket(bucket: FinanceDayBucket): FinanceDayBucket {
     ...bucket,
     income: roundMoney(bucket.income),
     expense: roundMoney(bucket.expense),
-    profit: roundMoney(bucket.income - bucket.expense),
+    profit: roundSignedMoney(bucket.income - bucket.expense),
   };
 }
 
