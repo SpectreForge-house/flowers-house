@@ -5,6 +5,7 @@ import { createReservation, PendingReservation, releaseReservationsForOrder, com
 import { photoOwnerKey, removeOwnerPhotos } from './photoStorage';
 import { InventoryStorageAdapter } from './inventoryStorageAdapter';
 import { OrderStorageAdapter } from './orderStorageAdapter';
+import { currentDate, localDateKey } from '../utils/clock';
 
 export function generateOrderId(): string {
   const orders = getOrders();
@@ -199,9 +200,9 @@ export async function updateOrderPurchaseDate(
 
 export function getOrderStats(ordersOverride?: Order[]) {
   const orders = ordersOverride ?? getOrders();
-  const today = new Date().toISOString().split('T')[0];
-  
-  const todayOrders = orders.filter(o => o.createdAt.startsWith(today));
+  const today = localDateKey(currentDate());
+
+  const todayOrders = orders.filter(o => localDateKey(new Date(o.createdAt)) === today);
   const todayRevenue = todayOrders
     .filter(o => o.status !== 'cancelled')
     .reduce((sum, o) => sum + o.total, 0);

@@ -51,12 +51,13 @@ export function CalendarPage() {
   const calendarDays = useMemo(() => {
     const days: { date: string; dayNum: number; isCurrentMonth: boolean; isToday: boolean; hasDeliveries: boolean; deliveryCount: number; clientDateCount: number }[] = [];
     
-    // Previous month padding
+    // Previous month padding. Built from a real Date so January shows
+    // December of the previous year instead of an invalid "2026-00-31".
     const prevMonth = new Date(year, month, 0);
     for (let i = startDay - 1; i >= 0; i--) {
-      const day = prevMonth.getDate() - i;
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ date: dateStr, dayNum: day, isCurrentMonth: false, isToday: false, hasDeliveries: false, deliveryCount: 0, clientDateCount: 0 });
+      const date = new Date(year, month - 1, prevMonth.getDate() - i);
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      days.push({ date: dateStr, dayNum: date.getDate(), isCurrentMonth: false, isToday: false, hasDeliveries: false, deliveryCount: 0, clientDateCount: 0 });
     }
 
     // Current month

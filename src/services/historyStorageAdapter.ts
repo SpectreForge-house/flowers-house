@@ -5,5 +5,5 @@ export interface HistoryStorageAdapter {
   addHistory(record: HistoryRecord): Promise<void>;
   saveHistory(records: HistoryRecord[]): Promise<void>;
   deleteHistory(id: string): Promise<void>;
-  deleteHistoryByFilter(filters: { olderThan?: string }): Promise<number>;
+  deleteHistoryByFilter(filters: { olderThan?: string; since?: string; until?: string }): Promise<number>;
 }

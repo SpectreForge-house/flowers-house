@@ -258,7 +258,7 @@ export async function recordWaste(itemId: string, quantity: number, reason: stri
     });
   }
 
-  return { success: true, message: msg('waste.recorded', { qty: quantity, unit: item.unit, name: item.name }) };
+  return { success: true, message: msg('waste.recordedSuccessfully', { qty: quantity, unit: item.unit, name: item.name }) };
 }
 
 export async function getWasteTransactions(adapter?: InventoryStorageAdapter): Promise<InventoryTransaction[]> {

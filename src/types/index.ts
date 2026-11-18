@@ -253,10 +253,11 @@ export type HistoryActionType =
   | 'inventory_received' | 'inventory_decreased' | 'inventory_waste'
   | 'bouquet_created' | 'bouquet_edited' | 'bouquet_deleted'
   | 'customer_created' | 'customer_edited' | 'customer_deleted'
+  | 'finance_created' | 'finance_edited' | 'finance_deleted'
   | 'settings_changed'
   | 'backup_created' | 'backup_restored';
 
-export type EntityType = 'order' | 'delivery' | 'inventory' | 'bouquet' | 'customer' | 'reservation' | 'settings' | 'backup';
+export type EntityType = 'order' | 'delivery' | 'inventory' | 'bouquet' | 'customer' | 'reservation' | 'finance' | 'settings' | 'backup';
 
 export interface HistoryRecord {
   id: string;

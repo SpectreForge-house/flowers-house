@@ -162,6 +162,7 @@ export class SupabaseOrderAdapter implements OrderStorageAdapter {
         comment: order.comment || null,
         status: order.status,
         inventory_deducted: order.inventoryDeducted,
+        created_at: order.createdAt,
         updated_at: order.updatedAt,
       })
       .eq('id', order.id);

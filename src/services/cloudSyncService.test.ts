@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { isDuplicate, migrateCollection } from './cloudSyncService';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  getUploadedFinanceIds,
+  isDuplicate,
+  markFinanceIdsUploaded,
+  migrateCollection,
+} from './cloudSyncService';
 
 interface Item {
   id: string;
@@ -65,5 +70,28 @@ describe('isDuplicate', () => {
     expect(isDuplicate(new Error('duplicate key value violates unique constraint'))).toBe(true);
     expect(isDuplicate(new Error('new row violates check constraint (23505)'))).toBe(true);
     expect(isDuplicate(new Error('network error'))).toBe(false);
+  });
+});
+
+describe('uploaded finance ids', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('starts empty and remembers ids without duplicates', () => {
+    expect(getUploadedFinanceIds().size).toBe(0);
+
+    markFinanceIdsUploaded(['a', 'b', 'a']);
+    markFinanceIdsUploaded(['b', 'c']);
+
+    expect([...getUploadedFinanceIds()].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('ignores broken storage instead of throwing', () => {
+    localStorage.setItem('flower-shop.finance-uploaded-ids', '{not json');
+    expect(getUploadedFinanceIds().size).toBe(0);
+
+    localStorage.setItem('flower-shop.finance-uploaded-ids', '{"a":1}');
+    expect(getUploadedFinanceIds().size).toBe(0);
   });
 });

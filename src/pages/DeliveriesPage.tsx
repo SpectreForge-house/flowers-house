@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Truck, Clock, CheckCircle, MapPin, Phone, ExternalLink } from 'lucide-react';
 import { Delivery } from '../types';
 import { updateDeliveryStatus } from '../services/deliveryService';
@@ -130,13 +131,13 @@ export function DeliveriesPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <a
-                    href={`/orders`}
+                  <Link
+                    to="/orders"
                     className="p-2 text-text-secondary hover:text-text-primary hover:bg-hover rounded"
                     title={t.deliveries.viewOrder}
                   >
                     <ExternalLink size={18} />
-                  </a>
+                  </Link>
                   {statusFlow[delivery.status]?.map((nextStatus) => (
                     <Button
                       key={nextStatus}

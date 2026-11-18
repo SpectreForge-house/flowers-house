@@ -2,9 +2,10 @@ import { Delivery } from '../types';
 import { getDeliveries, saveDeliveries, getOrders, updateOrder } from './storage';
 import { completeReservationsForOrder } from './reservationService';
 import { OrderStorageAdapter } from './orderStorageAdapter';
+import { localDateKey } from '../utils/clock';
 
 export function getTodayDeliveries(): Delivery[] {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey(new Date());
   return getDeliveries()
     .filter(d => d.scheduledDate === today)
     .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
@@ -60,7 +61,7 @@ export async function updateDeliveryStatus(deliveryId: string, status: Delivery[
 }
 
 export function getDeliveryStats() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey(new Date());
   const todayDeliveries = getDeliveries().filter(d => d.scheduledDate === today);
   
   return {

@@ -27,7 +27,7 @@ import {
   startOfYear,
 } from 'date-fns';
 import { FinanceEntry, FinanceEntryType } from '../types';
-import { useFinance, useSettings } from '../hooks/useStore';
+import { useFinance, useSettings, getHistoryAdapter } from '../hooks/useStore';
 import { useLanguage } from '../i18n';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { FinanceEntryModal } from '../components/finance/FinanceEntryModal';
@@ -55,7 +55,12 @@ import {
   updateFinanceEntryValues,
 } from '../services/financeService';
 import * as storage from '../services/storage';
-import { getCloudFinanceIds, migrateLocalFinanceToCloud } from '../services/cloudSyncService';
+import { recordHistory } from '../services/historyService';
+import {
+  getCloudFinanceIds,
+  getUploadedFinanceIds,
+  migrateLocalFinanceToCloud,
+} from '../services/cloudSyncService';
 
 type RangeMode = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
@@ -253,7 +258,10 @@ export function FinancePage() {
 
     getCloudFinanceIds()
       .then((ids) => {
-        if (!cancelled) setCloudFinanceIds(ids);
+        if (cancelled) return;
+        // Entries that were uploaded once but deleted in the cloud afterwards
+        // must not be offered again - that would silently change the totals.
+        setCloudFinanceIds(new Set([...ids, ...getUploadedFinanceIds()]));
       })
       .catch((err) => {
         console.error('[FinancePage] Failed to load cloud finance ids:', err);
@@ -269,6 +277,12 @@ export function FinancePage() {
     if (!cloudFinanceIds) return [];
     return localEntries.filter((entry) => !cloudFinanceIds.has(entry.id));
   }, [cloudFinanceIds, localEntries]);
+
+  // Entries typed in local mode are not part of the hook state, so keep the
+  // local copy fresh before computing the "upload to cloud" banner.
+  useEffect(() => {
+    setLocalEntries(storage.getFinanceEntries());
+  }, [entries, user]);
 
   const formatMoney = (value: number) =>
     // A shortfall reads "-€400.00", not "€-400.00".
@@ -363,6 +377,10 @@ export function FinancePage() {
     setModalOpen(true);
   };
 
+  /** Human-readable one-liner used by the change history. */
+  const describeEntry = (entry: FinanceEntry) =>
+    `${entry.type === 'income' ? 'Income' : 'Expense'} ${formatCurrency(entry.amount, currency)} on ${entry.date}`;
+
   // The Home page quick buttons link to /finance?action=income|expense.
   useEffect(() => {
     const action = searchParams.get('action');
@@ -378,10 +396,60 @@ export function FinancePage() {
 
   const handleSubmit = async (input: Parameters<typeof createFinanceEntry>[0]) => {
     if (editingEntry) {
-      await updateEntry(updateFinanceEntryValues(editingEntry, input));
+      const updated = updateFinanceEntryValues(editingEntry, input);
+      await updateEntry(updated);
+
+      // The cash-book has no other audit trail: log what changed, so a total
+      // that looks different later can always be explained.
+      const changed =
+        updated.type !== editingEntry.type ||
+        updated.date !== editingEntry.date ||
+        updated.amount !== editingEntry.amount ||
+        updated.note !== editingEntry.note ||
+        updated.category !== editingEntry.category ||
+        updated.categoryLabel !== editingEntry.categoryLabel;
+
+      if (changed) {
+        const metadata: Record<string, string | number | boolean> = {
+          type: updated.type,
+          previousType: editingEntry.type,
+          amount: updated.amount,
+          previousAmount: editingEntry.amount,
+          date: updated.date,
+          previousDate: editingEntry.date,
+        };
+        if (updated.note) metadata.note = updated.note;
+
+        void recordHistory(
+          'finance_edited',
+          'finance',
+          updated.id,
+          `${describeEntry(editingEntry)} -> ${describeEntry(updated)}`,
+          metadata,
+          getHistoryAdapter(),
+        );
+      }
+
       showToast('success', t.finance.updated);
     } else {
-      await addEntry(createFinanceEntry(input));
+      const created = createFinanceEntry(input);
+      await addEntry(created);
+
+      const metadata: Record<string, string | number | boolean> = {
+        type: created.type,
+        amount: created.amount,
+        date: created.date,
+      };
+      if (created.note) metadata.note = created.note;
+
+      void recordHistory(
+        'finance_created',
+        'finance',
+        created.id,
+        `${describeEntry(created)} added`,
+        metadata,
+        getHistoryAdapter(),
+      );
       showToast('success', input.type === 'income' ? t.finance.savedIncome : t.finance.savedExpense);
     }
 
@@ -393,8 +461,24 @@ export function FinancePage() {
 
   const handleDelete = async () => {
     if (!deletingEntry) return;
+    const removed = deletingEntry;
     try {
-      await deleteEntry(deletingEntry.id);
+      await deleteEntry(removed.id);
+      const metadata: Record<string, string | number | boolean> = {
+        type: removed.type,
+        amount: removed.amount,
+        date: removed.date,
+      };
+      if (removed.note) metadata.note = removed.note;
+
+      void recordHistory(
+        'finance_deleted',
+        'finance',
+        removed.id,
+        `${describeEntry(removed)} deleted`,
+        metadata,
+        getHistoryAdapter(),
+      );
       showToast('success', t.finance.deleted);
     } catch (err) {
       console.error('[FinancePage] Failed to delete entry:', err);

@@ -20,17 +20,25 @@ export class LocalHistoryAdapter implements HistoryStorageAdapter {
     saveHistory(all.filter(r => r.id !== id));
   }
 
-  async deleteHistoryByFilter(filters: { olderThan?: string }): Promise<number> {
+  async deleteHistoryByFilter(filters: { olderThan?: string; since?: string; until?: string }): Promise<number> {
     const all = getHistory();
 
-    if (!filters.olderThan) {
-      const count = all.length;
-      saveHistory([]);
-      return count;
-    }
+    const since = filters.since ? new Date(filters.since).getTime() : null;
+    const until = filters.until ? new Date(filters.until).getTime() : null;
+    const olderThan = filters.olderThan ? new Date(filters.olderThan).getTime() : null;
 
-    const cutoff = new Date(filters.olderThan);
-    const kept = all.filter(r => new Date(r.timestamp) >= cutoff);
+    const kept = all.filter(record => {
+      const time = new Date(record.timestamp).getTime();
+      if (since === null && olderThan === null && until === null) return false;
+      let remove = false;
+      if (since !== null) {
+        remove = time >= since && (until === null || time < until);
+      } else if (olderThan !== null) {
+        remove = time < olderThan;
+      }
+      return !remove;
+    });
+
     const deleted = all.length - kept.length;
     saveHistory(kept);
     return deleted;

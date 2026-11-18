@@ -9,7 +9,7 @@ import { isCloudActive } from '../../services/storageMode';
 import { recordHistory } from '../../services/historyService';
 import { buildPendingReservations } from '../../services/reservationService';
 import { formatCurrency } from '../../utils/formatters';
-import { todayIso } from '../../utils/clock';
+import { localDateKey, todayIso } from '../../utils/clock';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { DiscardChangesDialog } from '../ui/DiscardChangesDialog';
@@ -50,10 +50,13 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
   const [deliveryDate, setDeliveryDate] = useState(today);
   const [deliveryTime, setDeliveryTime] = useState('12:00');
   const [items, setItems] = useState<OrderItem[]>([{ bouquetId: '', quantity: 1, price: 0 }]);
-  const [deliveryFee, setDeliveryFee] = useState(8);
+  // The delivery price comes from the shop settings instead of a hardcoded 8.
+  const [initialFee] = useState(() => settings.defaultDeliveryFee ?? 0);
+  const [deliveryFee, setDeliveryFee] = useState(initialFee);
   const [comment, setComment] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -82,7 +85,7 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
     deliveryDate !== initial.deliveryDate ||
     deliveryTime !== '12:00' ||
     JSON.stringify(items) !== initial.items ||
-    deliveryFee !== 8 ||
+    deliveryFee !== initialFee ||
     comment !== '' ||
     photoFile !== null;
 
@@ -176,6 +179,9 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
   };
 
   const handleSubmit = async () => {
+    // A double tap on a phone used to create two orders and deduct the stock
+    // twice, so a save in progress blocks the second submit.
+    if (saving) return;
     if (customerMode === null) {
       showToast('error', t.orderForm.pleaseSelectCustomerType);
       return;
@@ -199,6 +205,7 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
     }
 
     let customer: Customer;
+    setSaving(true);
     try {
       if (customerMode === 'new') {
         customer = { id: uuidv4(), name: newCustomer.name, phone: newCustomer.phone, address: newCustomer.address, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -212,7 +219,7 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
       const orderItems = items.filter(i => i.bouquetId);
       const pendingReservations = isInStore ? [] : buildPendingReservations(orderItems, hookBouquets);
       const now = new Date();
-      const orderDeliveryDate = isInStore ? now.toISOString().split('T')[0] : deliveryDate;
+      const orderDeliveryDate = isInStore ? localDateKey(now) : deliveryDate;
       const orderDeliveryTime = isInStore ? now.toTimeString().slice(0, 5) : deliveryTime;
       const order = await createOrder({
         customerId: customer.id,
@@ -274,6 +281,8 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast('error', msg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -570,7 +579,7 @@ export function OrderForm({ onClose, onCreated, initialOrderType = 'delivery' }:
           <Button variant="secondary" onClick={guard.requestClose} className="flex-1">
             {t.orderForm.cancel}
           </Button>
-          <Button onClick={handleSubmit} className="flex-1">
+          <Button onClick={handleSubmit} isLoading={saving} className="flex-1">
             {orderType === 'in_store' ? t.orderForm.completeSale : t.orderForm.create}
           </Button>
         </div>

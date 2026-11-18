@@ -9,6 +9,7 @@ import {
   saveDismissedReminders,
 } from './storage';
 import { InventoryItem, Order, Delivery, InventoryReservation } from '../types';
+import { localDateKey } from '../utils/clock';
 
 export interface Reminder {
   id: string;
@@ -22,14 +23,13 @@ export interface Reminder {
 }
 
 function isToday(dateStr: string): boolean {
-  const today = new Date().toISOString().split('T')[0];
-  return dateStr === today;
+  return dateStr === localDateKey(new Date());
 }
 
 function isTomorrow(dateStr: string): boolean {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return dateStr === tomorrow.toISOString().split('T')[0];
+  return dateStr === localDateKey(tomorrow);
 }
 
 export function getReminderDismissKey(reminder: Pick<Reminder, 'id' | 'message'>): string {

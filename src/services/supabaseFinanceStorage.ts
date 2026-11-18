@@ -60,6 +60,9 @@ export class SupabaseFinanceAdapter implements FinanceStorageAdapter {
   async updateEntry(entry: FinanceEntry): Promise<void> {
     if (!supabase) throw new Error('Supabase not configured');
 
+    const shopId = await getShopId();
+    if (!shopId) throw new Error('Not signed in or profile missing');
+
     const { error } = await supabase
       .from('finance_entries')
       .update({
@@ -71,7 +74,8 @@ export class SupabaseFinanceAdapter implements FinanceStorageAdapter {
         note: entry.note || null,
         updated_at: entry.updatedAt,
       })
-      .eq('id', entry.id);
+      .eq('id', entry.id)
+      .eq('shop_id', shopId);
 
     if (error) throw new Error(`Failed to update finance entry: ${error.message}`);
   }
@@ -79,10 +83,14 @@ export class SupabaseFinanceAdapter implements FinanceStorageAdapter {
   async deleteEntry(id: string): Promise<void> {
     if (!supabase) throw new Error('Supabase not configured');
 
+    const shopId = await getShopId();
+    if (!shopId) throw new Error('Not signed in or profile missing');
+
     const { error } = await supabase
       .from('finance_entries')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('shop_id', shopId);
 
     if (error) throw new Error(`Failed to delete finance entry: ${error.message}`);
   }

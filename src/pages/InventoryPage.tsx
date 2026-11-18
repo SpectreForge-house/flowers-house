@@ -258,11 +258,11 @@ export function InventoryPage() {
                       <span className="text-text-primary">
                         {item.quantity}
                       </span>
-                      <span className="text-text-muted text-sm ml-1">{item.unit}</span>
+                      <span className="text-text-muted text-sm ml-1">{t.inventory[item.unit]}</span>
                     </td>
                     <td className="px-4 py-3">
                       {reserved > 0 ? (
-                        <span className="text-status-warning font-medium">{reserved} <span className="text-text-muted text-sm">{item.unit}</span></span>
+                        <span className="text-status-warning font-medium">{reserved} <span className="text-text-muted text-sm">{t.inventory[item.unit]}</span></span>
                       ) : (
                         <span className="text-text-muted">—</span>
                       )}
@@ -271,10 +271,10 @@ export function InventoryPage() {
                       <span className={`font-medium ${available <= 0 ? 'text-status-danger' : available <= item.minStock ? 'text-status-warning' : 'text-status-success'}`}>
                         {available}
                       </span>
-                      <span className="text-text-muted text-sm ml-1">{item.unit}</span>
+                      <span className="text-text-muted text-sm ml-1">{t.inventory[item.unit]}</span>
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
-                      {item.minStock} {item.unit}
+                      {item.minStock} {t.inventory[item.unit]}
                     </td>
                     <td className="px-4 py-3 text-status-success">
                       {formatCurrency(item.purchasePrice)}
@@ -367,7 +367,7 @@ export function InventoryPage() {
                 <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                   <div>
                     <span className="text-text-muted">{t.inventory.stock}:</span>
-                    <span className="text-text-primary">{item.quantity} {item.unit}</span>
+                    <span className="text-text-primary">{item.quantity} {t.inventory[item.unit]}</span>
                   </div>
                   {reserved > 0 && (
                     <div>
@@ -558,7 +558,7 @@ function StockAdjustment({
         <div className="bg-surface rounded-lg p-3">
           <p className="text-text-secondary text-sm">{t.inventory.currentStock}</p>
           <p className="text-text-primary text-lg font-medium">
-            {item.quantity} {item.unit}
+            {item.quantity} {t.inventory[item.unit]}
           </p>
         </div>
 
@@ -587,7 +587,7 @@ function StockAdjustment({
         <div className="bg-surface rounded-lg p-3">
           <p className="text-text-secondary text-sm">{t.inventory.newStock}</p>
           <p className={`text-lg font-medium ${type === 'add' ? 'text-status-success' : 'text-status-warning'}`}>
-            {type === 'add' ? item.quantity + quantity : item.quantity - quantity} {item.unit}
+            {type === 'add' ? item.quantity + quantity : item.quantity - quantity} {t.inventory[item.unit]}
           </p>
         </div>
 
@@ -652,7 +652,7 @@ function TransactionHistory({
                 <p className="text-text-muted text-sm">{formatDate(txn.createdAt)}</p>
               </div>
               <span className={`font-medium ${txn.type === 'add' ? 'text-status-success' : txn.type === 'waste' ? 'text-status-warning' : 'text-status-warning'}`}>
-                {txn.type === 'add' ? '+' : '-'}{txn.quantity} {item.unit}
+                {txn.type === 'add' ? '+' : '-'}{txn.quantity} {t.inventory[item.unit]}
               </span>
             </div>
           ))

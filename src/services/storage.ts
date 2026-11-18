@@ -564,12 +564,10 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupD
   let backup: BackupData;
 
   if (getStorageMode() === 'supabase') {
-    try {
-      backup = await createCloudBackup();
-    } catch (error) {
-      console.error('[storage] Cloud backup failed, falling back to local cache:', error);
-      backup = createLocalBackup();
-    }
+    // Never fall back to the local workspace here: in cloud mode it only holds
+    // pre-migration or demo records, so the file would look like a real backup
+    // while missing the shop's orders and customers. Callers show the error.
+    backup = await createCloudBackup();
   } else {
     backup = createLocalBackup();
   }
@@ -631,6 +629,10 @@ export async function restoreBackup(backup: BackupData): Promise<void> {
     setStorageMode('local');
   }
 
+  // Backups created before the cash-book existed have no finance section.
+  // Keeping the entries already on the device beats silently wiping them.
+  const existingFinance = getFinanceEntries();
+
   ALL_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
 
   saveToStorage<Customer>(STORAGE_KEYS.customers, backup.customers || []);
@@ -642,7 +644,7 @@ export async function restoreBackup(backup: BackupData): Promise<void> {
   saveToStorage<InventoryReservation>(STORAGE_KEYS.reservations, backup.reservations || []);
   saveToStorage<HistoryRecord>(STORAGE_KEYS.history, backup.history || []);
   saveToStorage<ClientPurchase>(STORAGE_KEYS.purchases, backup.purchases || []);
-  saveToStorage<FinanceEntry>(STORAGE_KEYS.finance, backup.finance || []);
+  saveToStorage<FinanceEntry>(STORAGE_KEYS.finance, Array.isArray(backup.finance) ? backup.finance : existingFinance);
   saveSettings(backup.settings || sampleSettings);
   localStorage.setItem(STORAGE_KEYS.language, backup.language || 'en');
   localStorage.setItem(STORAGE_KEYS.remindersRead, JSON.stringify(backup.remindersRead || []));

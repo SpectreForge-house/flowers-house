@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Clock, ShoppingCart, Package, Flower2, Users, Settings, ArrowDown, AlertTriangle, History as HistoryIcon, Trash2 } from 'lucide-react';
+import { ChevronDown, Clock, ShoppingCart, Package, Flower2, Users, Settings, ArrowDown, AlertTriangle, History as HistoryIcon, Trash2, Wallet } from 'lucide-react';
 import { HistoryActionType, EntityType } from '../types';
-import { ClearHistoryPeriod } from '../services/historyService';
+import { ClearHistoryPeriod, getHistoryClearRange, isInHistoryClearRange } from '../services/historyService';
 import { useHistory } from '../hooks/useHistory';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useLanguage } from '../i18n';
@@ -46,35 +46,10 @@ export function HistoryPage() {
   }, []);
 
   const handleClearClick = useCallback((period: ClearHistoryPeriod) => {
-    let count = 0;
-    if (period === 'all') {
-      count = allRecords.length;
-    } else {
-      const now = new Date();
-      let cutoff: Date;
-      switch (period) {
-        case 'yesterday':
-          cutoff = new Date(now);
-          cutoff.setDate(cutoff.getDate() - 1);
-          cutoff.setHours(0, 0, 0, 0);
-          break;
-        case '7days':
-          cutoff = new Date(now);
-          cutoff.setDate(cutoff.getDate() - 7);
-          break;
-        case 'month':
-          cutoff = new Date(now);
-          cutoff.setMonth(cutoff.getMonth() - 1);
-          break;
-        case 'year':
-          cutoff = new Date(now);
-          cutoff.setFullYear(cutoff.getFullYear() - 1);
-          break;
-        default:
-          cutoff = new Date(0);
-      }
-      count = allRecords.filter(r => new Date(r.timestamp) >= cutoff).length;
-    }
+    const count =
+      period === 'all'
+        ? allRecords.length
+        : allRecords.filter(r => isInHistoryClearRange(r.timestamp, getHistoryClearRange(period))).length;
     setClearCount(count);
     setClearConfirmPeriod(period);
     setShowClearMenu(false);
@@ -92,8 +67,11 @@ export function HistoryPage() {
   }, [deleteRecord]);
 
   const getActionLabel = (actionType: HistoryActionType): string => {
-    const key = `history.${actionType}` as keyof typeof t.history;
-    return t.history[key] || actionType;
+    // Action ids are snake_case ('order_created'), translation keys camelCase
+    // ('orderCreated'), so the lookup has to convert one into the other.
+    const key = actionType.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    const label = (t.history as Record<string, unknown>)[key];
+    return typeof label === 'string' ? label : actionType;
   };
 
   const getEntityIcon = (entityType: EntityType) => {
@@ -104,6 +82,7 @@ export function HistoryPage() {
       bouquet: Flower2,
       customer: Users,
       reservation: AlertTriangle,
+      finance: Wallet,
       settings: Settings,
       backup: ArrowDown,
     };
@@ -196,6 +175,7 @@ export function HistoryPage() {
               <option value="order_edited">{t.history.orderEdited}</option>
               <option value="order_status_changed">{t.history.orderStatusChanged}</option>
               <option value="order_cancelled">{t.history.orderCancelled}</option>
+              <option value="order_deleted">{t.history.orderDeleted}</option>
               <option value="reservation_created">{t.history.reservationCreated}</option>
               <option value="reservation_released">{t.history.reservationReleased}</option>
               <option value="reservation_completed">{t.history.reservationCompleted}</option>
@@ -206,6 +186,9 @@ export function HistoryPage() {
               <option value="bouquet_edited">{t.history.bouquetEdited}</option>
               <option value="customer_created">{t.history.customerCreated}</option>
               <option value="customer_edited">{t.history.customerEdited}</option>
+              <option value="finance_created">{t.history.financeCreated}</option>
+              <option value="finance_edited">{t.history.financeEdited}</option>
+              <option value="finance_deleted">{t.history.financeDeleted}</option>
               <option value="settings_changed">{t.history.settingsChanged}</option>
               <option value="backup_created">{t.history.backupCreated}</option>
               <option value="backup_restored">{t.history.backupRestored}</option>
@@ -228,6 +211,7 @@ export function HistoryPage() {
               <option value="bouquet">{t.bouquets.title}</option>
               <option value="customer">{t.customers.title}</option>
               <option value="reservation">{t.reservations.title}</option>
+              <option value="finance">{t.finance.title}</option>
               <option value="settings">{t.settings.title}</option>
               <option value="backup">{t.settings.backupSection}</option>
             </select>

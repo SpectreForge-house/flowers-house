@@ -172,12 +172,54 @@ export async function getCloudFinanceIds(): Promise<Set<string>> {
 
   const adapter = new SupabaseFinanceAdapter();
   const entries = await adapter.getEntries();
-  return new Set(entries.map(entry => entry.id));
+  const ids = new Set(entries.map(entry => entry.id));
+  // Remember what already lives in the cloud, so an entry that is deleted
+  // later is not offered for upload again from the stale local copy.
+  markFinanceIdsUploaded(ids);
+  return ids;
 }
 
 /**
- * Uploads only the owner's local finance entries that are missing from the
- * cloud. Used by the Finance tab banner, so a device that was switched to
+ * Local ids that were already pushed to the cloud at some point. Kept on the
+ * device so the Finance tab never re-uploads an entry the owner deleted in the
+ * cloud (that used to bring deleted expenses back and change the totals).
+ */
+const UPLOADED_FINANCE_IDS_KEY = 'flower-shop.finance-uploaded-ids';
+const UPLOADED_FINANCE_IDS_LIMIT = 5000;
+
+export function getUploadedFinanceIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(UPLOADED_FINANCE_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+export function markFinanceIdsUploaded(ids: Iterable<string>): void {
+  const known = getUploadedFinanceIds();
+  let changed = false;
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id || known.has(id)) continue;
+    known.add(id);
+    changed = true;
+  }
+  if (!changed) return;
+
+  try {
+    const list = Array.from(known).slice(-UPLOADED_FINANCE_IDS_LIMIT);
+    localStorage.setItem(UPLOADED_FINANCE_IDS_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.warn('[cloudSync] Failed to remember uploaded finance ids:', err);
+  }
+}
+
+/**
+ * Uploads only the owner's local finance entries that were never uploaded
+ * before. Used by the Finance tab banner, so a device that was switched to
  * cloud mode after entering the cash-book can catch up in one click.
  */
 export async function migrateLocalFinanceToCloud(): Promise<FinanceMigrationResult> {
@@ -190,13 +232,21 @@ export async function migrateLocalFinanceToCloud(): Promise<FinanceMigrationResu
 
   const errors: string[] = [];
   const adapter = new SupabaseFinanceAdapter();
+  const alreadyUploaded = getUploadedFinanceIds();
+  const local = storage
+    .getFinanceEntries()
+    .filter(entry => !alreadyUploaded.has(entry.id));
+
   const result = await migrateCollection({
     errors,
     label: 'finance entry',
-    local: storage.getFinanceEntries(),
+    local,
     loadCloud: () => adapter.getEntries(),
     getId: entry => entry.id,
-    add: entry => adapter.addEntry(entry),
+    add: async (entry) => {
+      await adapter.addEntry(entry);
+      markFinanceIdsUploaded([entry.id]);
+    },
   });
 
   return { ...result, errors };

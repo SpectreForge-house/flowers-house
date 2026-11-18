@@ -86,7 +86,7 @@ export class SupabaseHistoryAdapter implements HistoryStorageAdapter {
     if (error) throw error;
   }
 
-  async deleteHistoryByFilter(filters: { olderThan?: string }): Promise<number> {
+  async deleteHistoryByFilter(filters: { olderThan?: string; since?: string; until?: string }): Promise<number> {
     const shopId = await getShopId();
     if (!shopId) throw new Error('No shop ID available');
 
@@ -97,6 +97,12 @@ export class SupabaseHistoryAdapter implements HistoryStorageAdapter {
 
     if (filters.olderThan) {
       query = query.lt('timestamp', filters.olderThan);
+    }
+    if (filters.since) {
+      query = query.gte('timestamp', filters.since);
+    }
+    if (filters.until) {
+      query = query.lt('timestamp', filters.until);
     }
 
     const { data, error } = await query.select('id');

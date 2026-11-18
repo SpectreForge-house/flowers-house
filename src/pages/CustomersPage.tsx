@@ -6,7 +6,7 @@ import { Customer, ImportantDate, ImportantDateType } from '../types';
 import { buildPurchaseHistory, getPurchaseStats } from '../services/purchaseService';
 import { recordHistory } from '../services/historyService';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { currentDate, nowIso } from '../utils/clock';
+import { currentDate, localDateKey, nowIso } from '../utils/clock';
 import { showToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button } from '../components/ui/Button';
@@ -397,7 +397,7 @@ export function CustomersPage() {
               </div>
 
               {(() => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = localDateKey(currentDate());
                 const upcoming = allOrders.filter(o =>
                   o.customerId === customer.id &&
                   o.deliveryDate >= today &&
@@ -412,7 +412,7 @@ export function CustomersPage() {
                       {upcoming.slice(0, 3).map(order => {
                         const orderBouquets = order.items.map(item => {
                           const bouquet = bouquets.find(b => b.id === item.bouquetId);
-                          return { name: bouquet?.name || 'вЂ”', quantity: item.quantity };
+                          return { name: bouquet?.name || '\u2014', quantity: item.quantity };
                         });
                         return (
                           <div key={order.id} className="flex items-center gap-2 text-xs">
