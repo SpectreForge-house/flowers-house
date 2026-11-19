@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { restoreInventoryForOrder } from './inventoryService';
-import { getInventory, getOrders, getTransactions, saveInventory, saveOrders } from './storage';
+import { addTransaction, getInventory, getOrders, getTransactions, saveInventory, saveOrders } from './storage';
 import { Bouquet, InventoryItem, Order } from '../types';
 
 function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
@@ -96,6 +96,31 @@ describe('restoreInventoryForOrder (local mode)', () => {
     expect(getInventory()[0].quantity).toBe(9);
     expect(getTransactions()).toHaveLength(1);
     expect(getTransactions()[0].quantity).toBe(5);
+  });
+
+  it('returns exactly what was deducted even if the bouquet changed later', async () => {
+    const entry = order();
+    saveInventory([item()]);
+    saveOrders([entry]);
+    addTransaction({
+      id: 'txn-1',
+      inventoryItemId: 'item-1',
+      type: 'remove',
+      quantity: 3,
+      reason: 'Used for Order ORD-001',
+      referenceId: 'ORD-001',
+      createdAt: '2026-11-18T09:00:00.000Z',
+    });
+
+    // The bouquet now contains 5 stems, but the order deducted 3.
+    const result = await restoreInventoryForOrder(entry, [
+      bouquet('bouquet-1', [{ inventoryItemId: 'item-1', quantity: 5 }]),
+    ]);
+
+    expect(result.restored).toBe(3);
+    expect(getInventory()[0].quantity).toBe(7);
+    expect(getTransactions().filter(t => t.type === 'add')).toHaveLength(1);
+    expect(getTransactions().find(t => t.type === 'add')?.reason).toBe('Order ORD-001 cancelled');
   });
 
   it('is idempotent: a repeated cancel does not inflate the stock', async () => {

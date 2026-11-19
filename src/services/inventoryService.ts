@@ -136,26 +136,6 @@ export async function restoreInventoryForOrder(
     return { success: true, message: msg('orders.inventoryNotDeducted'), restored: 0 };
   }
 
-  // Aggregate per warehouse item: two bouquets in the same order may share the
-  // same roses, and each item must be returned exactly once.
-  const required = new Map<string, number>();
-  for (const orderItem of order.items) {
-    const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
-    if (!bouquet) {
-      return {
-        success: false,
-        message: msg('orders.bouquetNotFound', { id: orderItem.bouquetId }),
-        restored: 0,
-      };
-    }
-    for (const bouquetItem of bouquet.items) {
-      required.set(
-        bouquetItem.inventoryItemId,
-        (required.get(bouquetItem.inventoryItemId) ?? 0) + bouquetItem.quantity * orderItem.quantity,
-      );
-    }
-  }
-
   const timestamp = new Date().toISOString();
 
   if (isCloudActive()) {
@@ -163,10 +143,7 @@ export async function restoreInventoryForOrder(
     // refuses to return the same components twice.
     let restored = 0;
     try {
-      restored = await restoreInventoryForOrderRpc(
-        order.id,
-        Array.from(required, ([inventory_item_id, quantity]) => ({ inventory_item_id, quantity })),
-      );
+      restored = await restoreInventoryForOrderRpc(order.id);
     } catch (error) {
       const raw = (error as Error).message;
       // A clear hint when the database has not been migrated yet: without the
@@ -186,7 +163,38 @@ export async function restoreInventoryForOrder(
     return { success: true, message: msg('orders.inventoryRestored', { qty: restored }), restored };
   }
 
-  // Local mode
+  // Local mode. The stock movements written when the order was confirmed are
+  // the source of truth: editing or deleting a bouquet afterwards must not
+  // change what comes back to the warehouse. The current composition is only a
+  // fallback for legacy orders that have no movements recorded.
+  const required = new Map<string, number>();
+  for (const txn of getTransactions()) {
+    if (txn.referenceId === order.id && txn.type === 'remove') {
+      required.set(txn.inventoryItemId, (required.get(txn.inventoryItemId) ?? 0) + txn.quantity);
+    }
+  }
+
+  if (required.size === 0) {
+    // Aggregate per warehouse item: two bouquets in the same order may share
+    // the same roses, and each item must be returned exactly once.
+    for (const orderItem of order.items) {
+      const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
+      if (!bouquet) {
+        return {
+          success: false,
+          message: msg('orders.bouquetNotFound', { id: orderItem.bouquetId }),
+          restored: 0,
+        };
+      }
+      for (const bouquetItem of bouquet.items) {
+        required.set(
+          bouquetItem.inventoryItemId,
+          (required.get(bouquetItem.inventoryItemId) ?? 0) + bouquetItem.quantity * orderItem.quantity,
+        );
+      }
+    }
+  }
+
   const inventory = getInventory();
   for (const [itemId, quantity] of required) {
     const invItem = inventory.find(inv => inv.id === itemId);
