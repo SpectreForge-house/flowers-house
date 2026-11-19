@@ -218,10 +218,16 @@ export async function downloadAndroidUpdate(
   }
 
   const started = await ApkUpdater.download({ url: info.downloadUrl, fileName: info.fileName });
+  // The bridge may hand the native long back as a string; keep the id numeric
+  // so Android can query the download status.
+  const downloadId = Number(started?.id);
+  if (!Number.isFinite(downloadId) || downloadId <= 0) {
+    throw new Error('The download manager did not return a download id');
+  }
   const deadline = Date.now() + DOWNLOAD_TIMEOUT_MS;
 
   for (;;) {
-    const status = await ApkUpdater.status({ id: started.id });
+    const status = await ApkUpdater.status({ id: downloadId });
     if (status.total > 0) {
       onProgress(Math.min(1, Math.max(0, status.bytes / status.total)));
     }

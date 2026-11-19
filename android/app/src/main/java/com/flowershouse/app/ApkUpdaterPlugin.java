@@ -32,6 +32,9 @@ import java.util.Locale;
 public class ApkUpdaterPlugin extends Plugin {
 
     private static final String DOWNLOAD_DIR = Environment.DIRECTORY_DOWNLOADS;
+    // The DownloadManager id of the most recent download started by this
+    // plugin. Used only as a fallback when the id is lost in the JS bridge.
+    private long lastDownloadId = -1L;
 
     @PluginMethod
     public void getInfo(PluginCall call) {
@@ -88,6 +91,11 @@ public class ApkUpdaterPlugin extends Plugin {
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);
             request.setDestinationInExternalFilesDir(context, DOWNLOAD_DIR, safeName);
             long id = manager.enqueue(request);
+            if (id <= 0) {
+                call.reject("Download manager did not return a download id");
+                return;
+            }
+            lastDownloadId = id;
 
             JSObject result = new JSObject();
             result.put("id", id);
@@ -100,7 +108,13 @@ public class ApkUpdaterPlugin extends Plugin {
 
     @PluginMethod
     public void status(PluginCall call) {
-        Long id = call.getLong("id");
+        // Capacitor's PluginCall.getLong() only accepts a Long, while small
+        // JSON numbers arrive as Integer. Reading the raw value keeps the id
+        // from being dropped ("Missing download id") on every normal download.
+        Long id = readDownloadId(call.getData().opt("id"));
+        if (id == null || id <= 0) {
+            id = lastDownloadId > 0 ? lastDownloadId : null;
+        }
         if (id == null) {
             call.reject("Missing download id");
             return;
@@ -253,6 +267,20 @@ public class ApkUpdaterPlugin extends Plugin {
             return getContext().getPackageManager().canRequestPackageInstalls();
         }
         return true;
+    }
+
+    private static Long readDownloadId(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Long.parseLong(((String) value).trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static String sanitizeFileName(String fileName) {
