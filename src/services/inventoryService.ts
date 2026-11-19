@@ -2,8 +2,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { InventoryItem, InventoryTransaction, Bouquet, Order } from '../types';
 import { getInventory, saveInventory, getTransactions, addTransaction, getReservations, getOrders, saveOrders } from './storage';
 import { InventoryStorageAdapter } from './inventoryStorageAdapter';
+import { isCloudActive } from './storageMode';
 import { completeReservationsForOrder } from './reservationService';
-import { adjustInventoryStockRpc, deductInventoryForOrderRpc } from './supabaseInventoryStorage';
+import { adjustInventoryStockRpc, deductInventoryForOrderRpc, restoreInventoryForOrderRpc } from './supabaseInventoryStorage';
 
 export type InventoryMessage = { key: string; params?: Record<string, string | number> };
 
@@ -125,6 +126,103 @@ export async function deductInventoryForOrder(order: Order, bouquets: Bouquet[],
   await completeReservationsForOrder(order.id);
 
   return { success: true, message: msg('inventory.deductedSuccessfully') };
+}
+
+export async function restoreInventoryForOrder(
+  order: Order,
+  bouquets: Bouquet[],
+): Promise<{ success: boolean; message: InventoryMessage; restored: number }> {
+  if (!order.inventoryDeducted) {
+    return { success: true, message: msg('orders.inventoryNotDeducted'), restored: 0 };
+  }
+
+  // Aggregate per warehouse item: two bouquets in the same order may share the
+  // same roses, and each item must be returned exactly once.
+  const required = new Map<string, number>();
+  for (const orderItem of order.items) {
+    const bouquet = bouquets.find(b => b.id === orderItem.bouquetId);
+    if (!bouquet) {
+      return {
+        success: false,
+        message: msg('orders.bouquetNotFound', { id: orderItem.bouquetId }),
+        restored: 0,
+      };
+    }
+    for (const bouquetItem of bouquet.items) {
+      required.set(
+        bouquetItem.inventoryItemId,
+        (required.get(bouquetItem.inventoryItemId) ?? 0) + bouquetItem.quantity * orderItem.quantity,
+      );
+    }
+  }
+
+  const timestamp = new Date().toISOString();
+
+  if (isCloudActive()) {
+    // The database does the whole restore atomically and is idempotent: it
+    // refuses to return the same components twice.
+    let restored = 0;
+    try {
+      restored = await restoreInventoryForOrderRpc(
+        order.id,
+        Array.from(required, ([inventory_item_id, quantity]) => ({ inventory_item_id, quantity })),
+      );
+    } catch (error) {
+      const raw = (error as Error).message;
+      // A clear hint when the database has not been migrated yet: without the
+      // restore_inventory_for_order() function nothing can be returned.
+      const notMigrated = /Could not find the function|PGRST202|schema cache/i.test(raw);
+      return {
+        success: false,
+        message: notMigrated
+          ? msg('inventory.restoreUnavailable')
+          : msg('inventory.stockUpdateFailed', { error: raw }),
+        restored: 0,
+      };
+    }
+
+    order.inventoryDeducted = false;
+    order.updatedAt = timestamp;
+    return { success: true, message: msg('orders.inventoryRestored', { qty: restored }), restored };
+  }
+
+  // Local mode
+  const inventory = getInventory();
+  for (const [itemId, quantity] of required) {
+    const invItem = inventory.find(inv => inv.id === itemId);
+    if (!invItem) {
+      return { success: false, message: msg('orders.inventoryItemNotFound', { id: itemId }), restored: 0 };
+    }
+    invItem.quantity += quantity;
+    invItem.updatedAt = timestamp;
+  }
+  saveInventory(inventory);
+
+  let restored = 0;
+  for (const [itemId, quantity] of required) {
+    restored += quantity;
+    addTransaction({
+      id: uuidv4(),
+      inventoryItemId: itemId,
+      type: 'add',
+      quantity,
+      reason: `Order ${order.id} cancelled`,
+      referenceId: order.id,
+      createdAt: timestamp,
+    });
+  }
+
+  const orders = getOrders();
+  const storedOrder = orders.find(o => o.id === order.id);
+  if (storedOrder) {
+    storedOrder.inventoryDeducted = false;
+    storedOrder.updatedAt = timestamp;
+    saveOrders(orders);
+  }
+
+  order.inventoryDeducted = false;
+  order.updatedAt = timestamp;
+  return { success: true, message: msg('orders.inventoryRestored', { qty: restored }), restored };
 }
 
 export async function addStock(itemId: string, quantity: number, reason: string, adapter?: InventoryStorageAdapter): Promise<{ success: boolean; message: InventoryMessage }> {

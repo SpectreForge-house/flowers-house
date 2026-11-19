@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, Plus, Filter, ChevronDown, Trash2, Store } from 'lucide-react';
 import { Order, OrderStatus, OrderType } from '../types';
 import { updateOrderStatus, deleteOrderAndCleanup } from '../services/orderService';
-import { deductInventoryForOrder } from '../services/inventoryService';
+import { deductInventoryForOrder, restoreInventoryForOrder } from '../services/inventoryService';
 import { recordHistory } from '../services/historyService';
 import { formatCurrency, formatDate, getStatusColor, getNextStatus } from '../utils/formatters';
 import { showToast } from '../components/ui/Toast';
@@ -71,7 +71,18 @@ export function OrdersPage() {
         // Update local order so the subsequent updateOrderStatus saves the correct flag.
         order.inventoryDeducted = true;
       }
-      
+
+      // Cancelling a confirmed order returns its flowers to the warehouse.
+      let stockRestored = 0;
+      if (newStatus === 'cancelled' && order.inventoryDeducted) {
+        const restore = await restoreInventoryForOrder(order, bouquets);
+        if (!restore.success) {
+          showToast('error', tMessage(restore.message));
+          return;
+        }
+        stockRestored = restore.restored;
+      }
+
       const adapter = getAdapter();
       const updated = await updateOrderStatus(order.id, newStatus, adapter, getOrderAdapter());
       if (updated) {
@@ -79,6 +90,7 @@ export function OrdersPage() {
         void recordHistory('order_status_changed', 'order', order.id, `Order ${order.id} status changed from ${order.status} to ${newStatus}`, {
           oldStatus: order.status,
           newStatus,
+          ...(stockRestored > 0 ? { stockRestored } : {}),
         }, getHistoryAdapter());
         showToast('success', t.orders.orderUpdated.replace('{id}', order.id).replace('{status}', t.statuses[newStatus]));
       }
@@ -93,8 +105,21 @@ export function OrdersPage() {
       setDeletingId(orderToCancel.id);
       setTimeout(async () => {
         try {
+          let stockRestored = 0;
+          if (orderToCancel.inventoryDeducted) {
+            const restore = await restoreInventoryForOrder(orderToCancel, bouquets);
+            if (!restore.success) {
+              showToast('error', tMessage(restore.message));
+              setDeletingId(null);
+              return;
+            }
+            stockRestored = restore.restored;
+          }
+
           await updateOrderStatus(orderToCancel.id, 'cancelled', getAdapter(), getOrderAdapter());
-          void recordHistory('order_cancelled', 'order', orderToCancel.id, `Order ${orderToCancel.id} has been cancelled`, undefined, getHistoryAdapter());
+          void recordHistory('order_cancelled', 'order', orderToCancel.id, `Order ${orderToCancel.id} has been cancelled`, {
+            ...(stockRestored > 0 ? { stockRestored } : {}),
+          }, getHistoryAdapter());
           await refreshOrders();
           setOrderToCancel(null);
           setDeletingId(null);
@@ -113,6 +138,17 @@ export function OrdersPage() {
       setDeletingId(orderToDelete.id);
       setTimeout(async () => {
         try {
+          // A confirmed order already deducted its flowers; deleting it must
+          // return them first, otherwise the stock disappears with the record.
+          if (orderToDelete.inventoryDeducted) {
+            const restore = await restoreInventoryForOrder(orderToDelete, bouquets);
+            if (!restore.success) {
+              showToast('error', tMessage(restore.message));
+              setDeletingId(null);
+              return;
+            }
+          }
+
           // Deletes the order, releases its reservations and removes its photos.
           await deleteOrderAndCleanup(orderToDelete.id, getOrderAdapter(), getAdapter());
           void recordHistory('order_deleted', 'order', orderToDelete.id, `Order ${orderToDelete.id} deleted`, undefined, getHistoryAdapter());

@@ -336,6 +336,26 @@ export async function deductInventoryForOrderRpc(orderId: string, items: { inven
   if (error) throw new Error(`Failed to deduct inventory: ${error.message}`);
 }
 
+/**
+ * Returns the components of a confirmed order to the warehouse and clears
+ * inventory_deducted in one transaction. Returns the restored quantity
+ * (0 when the order had nothing deducted).
+ */
+export async function restoreInventoryForOrderRpc(
+  orderId: string,
+  items: { inventory_item_id: string; quantity: number }[],
+): Promise<number> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { data, error } = await supabase.rpc('restore_inventory_for_order', {
+    p_order_id: orderId,
+    p_items: items,
+  });
+
+  if (error) throw new Error(`Failed to restore inventory: ${error.message}`);
+  return Number(data);
+}
+
 export async function adjustInventoryStockRpc(params: {
   itemId: string;
   quantity: number;

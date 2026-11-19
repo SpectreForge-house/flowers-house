@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Edit, ImageOff, MapPin, Repeat, Trash2 } from 'lucide-react';
 import { PurchaseHistoryEntry, deletePurchase } from '../../services/purchaseService';
 import { deleteOrderAndCleanup } from '../../services/orderService';
+import { restoreInventoryForOrder } from '../../services/inventoryService';
 import { recordHistory } from '../../services/historyService';
 import { removeOwnerPhotos, removePhoto } from '../../services/photoStorage';
 import { formatCurrency, formatDate, getStatusColor } from '../../utils/formatters';
 import { useLanguage } from '../../i18n';
-import { useOrders, useInventory, getHistoryAdapter } from '../../hooks/useStore';
+import { useOrders, useInventory, useBouquets, getHistoryAdapter } from '../../hooks/useStore';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { usePhotoUrl } from '../../hooks/usePhotoUrl';
 import { showToast } from '../ui/Toast';
@@ -32,11 +33,12 @@ interface PurchaseDetailProps {
  * Manual entries can be edited; deleting an entry removes its photo files.
  */
 export function PurchaseDetail({ entry, onClose, onEdit, onRepeat, onChanged }: PurchaseDetailProps) {
-  const { t } = useLanguage();
+  const { t, tMessage } = useLanguage();
   const { can } = usePermissions();
   const canDelete = can('deleteRecords');
   const { getAdapter: getOrderAdapter } = useOrders();
   const { getAdapter: getInventoryAdapter } = useInventory();
+  const { bouquets } = useBouquets();
   const [photos, setPhotos] = useState<string[]>(entry.photos);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [confirmEntryDelete, setConfirmEntryDelete] = useState(false);
@@ -58,6 +60,16 @@ export function PurchaseDetail({ entry, onClose, onEdit, onRepeat, onChanged }: 
   const handleDelete = async () => {
     try {
       if (isOrder) {
+        // A confirmed order already deducted its flowers; deleting it must
+        // return them first, otherwise the stock disappears with the record.
+        const order = entry.order ?? (await getOrderAdapter().getOrders()).find(o => o.id === entry.id);
+        if (order?.inventoryDeducted) {
+          const restore = await restoreInventoryForOrder(order, bouquets);
+          if (!restore.success) {
+            showToast('error', tMessage(restore.message));
+            return;
+          }
+        }
         // Same cleanup as deleting the order on the Orders page.
         await deleteOrderAndCleanup(entry.id, getOrderAdapter(), getInventoryAdapter());
         void recordHistory('order_deleted', 'order', entry.id, `Order ${entry.id} deleted`, undefined, getHistoryAdapter());
